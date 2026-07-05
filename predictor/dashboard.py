@@ -900,8 +900,9 @@ def _dashboard_data(all_df: pd.DataFrame, offset_hours: float) -> dict:
 
 
 def _hero() -> str:
-    """Static skeleton for the top prediction hero + chart. The coin/timeframe
-    selectors and all values are filled by JS from the embedded dashboard data."""
+    """Static skeleton for the top prediction hero + chart. Structure is rendered
+    once; JS only updates VALUES (text, bar widths, chart path attributes) so the
+    hero never re-renders/flickers. Selectors are filled by JS from the data."""
     return """
 <section class="card hero" id="sec-hero" aria-label="Next candle prediction">
   <div class="hero-head-row">
@@ -923,16 +924,45 @@ def _hero() -> str:
         <div class="hero-status" id="hero-status"></div>
       </div>
     </div>
-    <div class="hero-facts" id="hero-facts"></div>
+    <div class="hero-facts" id="hero-facts">
+      <div class="fact"><div class="fact-l">Confidence</div>
+        <div class="fact-v" id="f-conf">—</div></div>
+      <div class="fact"><div class="fact-l">Probability</div>
+        <div class="fact-v"><span class="pbar"><i id="pb-up"></i><i id="pb-neu"></i><i id="pb-down"></i></span>
+        <div class="pkey muted" id="pb-key">—</div></div></div>
+      <div class="fact"><div class="fact-l">Expected close</div>
+        <div class="fact-v" id="f-exp">—</div></div>
+      <div class="fact"><div class="fact-l">Last close</div>
+        <div class="fact-v" id="f-last">—</div></div>
+    </div>
     <div class="hero-chartwrap">
       <div class="hero-chart-top"><span id="chart-label">Recent price</span>
         <span id="chart-range"></span></div>
       <svg class="hero-svg" id="hero-svg" viewBox="0 0 600 150"
-           preserveAspectRatio="none" aria-label="recent price chart"></svg>
+           preserveAspectRatio="none" aria-label="recent price chart">
+        <defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1">
+          <stop id="cg0" offset="0" stop-color="#64748b" stop-opacity="0.16"/>
+          <stop id="cg1" offset="1" stop-color="#64748b" stop-opacity="0"/></linearGradient></defs>
+        <path id="ch-area" d="" fill="url(#cg)"></path>
+        <path id="ch-line" d="" fill="none" stroke="#64748b" stroke-width="2"
+              stroke-linejoin="round" stroke-linecap="round"></path>
+        <circle id="ch-dot" r="3.5" fill="#64748b" cx="-10" cy="-10"></circle>
+      </svg>
       <div class="empty" id="chart-empty" hidden>Market chart data unavailable.</div>
     </div>
   </div>
 </section>"""
+
+
+def _data_sig(all_df: pd.DataFrame) -> str:
+    """Cheap signature that changes only when a prediction is added or resolved.
+    Lets the frontend skip re-applying section HTML when nothing has changed."""
+    if all_df.empty:
+        return "0:0:0"
+    n = len(all_df)
+    resolved = int(all_df["actual_direction"].notna().sum())
+    mx = int(all_df["id"].max())
+    return f"{n}:{resolved}:{mx}"
 
 
 # ---------------------------------------------------------------------- #
@@ -1437,71 +1467,58 @@ _JS = """
     seg('coin-seg',DATA.coins,selCoin,'coin',function(c){selCoin=c;ensureSel();saveSel();renderAll();});
     seg('tf-seg',(DATA.tfs[selCoin]||[]),selTf,'tf',function(t){selTf=t;saveSel();renderAll();});
   }
-  function fact(l,v){return '<div class="fact"><div class="fact-l">'+l+'</div><div class="fact-v">'+v+'</div></div>';}
-  function renderHero(){
+  // --- granular value updaters (never rebuild structure -> no flicker) ---
+  function setTxt(id,t){var e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t;}
+  function setW(id,w,bg){var e=document.getElementById(id);if(e){var s=w+'%';if(e.style.width!==s)e.style.width=s;if(bg&&e.style.background!==bg)e.style.background=bg;}}
+  function setAttr(el,a,v){if(el&&el.getAttribute(a)!==v)el.setAttribute(a,v);}
+  function updateHeroValues(){
     var sc=document.getElementById('sel-chip');
-    if(sc){ if(selCoin){sc.hidden=false;sc.textContent=selCoin+' · '+selTf;} else sc.hidden=true; }
+    if(sc){ if(selCoin){sc.hidden=false;setTxt('sel-chip',selCoin+' · '+selTf);} else sc.hidden=true; }
+    var call=document.getElementById('hero-call');
     var p=(DATA.pred[selCoin]||{})[selTf];
-    var call=document.getElementById('hero-call'), arrow=document.getElementById('hero-arrow'),
-        vd=document.getElementById('hero-verdict'), meta=document.getElementById('hero-meta'),
-        st=document.getElementById('hero-status'), facts=document.getElementById('hero-facts'),
-        tgt=document.getElementById('hero-target');
     if(!p){
-      if(arrow)arrow.textContent='–'; if(call)call.setAttribute('data-dir','flat');
-      if(vd)vd.textContent='No prediction yet';
-      if(meta)meta.textContent=selCoin?(selCoin+' · '+selTf):'';
-      if(st)st.innerHTML=''; if(facts)facts.innerHTML=''; if(tgt)tgt.textContent='—'; return;
+      setAttr(call,'data-dir','flat'); setTxt('hero-arrow','–'); setTxt('hero-verdict','No prediction yet');
+      setTxt('hero-meta',selCoin?(selCoin+' · '+selTf):''); setTxt('hero-target','—');
+      var s0=document.getElementById('hero-status'); if(s0&&s0.innerHTML!=='')s0.innerHTML='';
+      setTxt('f-conf','—'); setTxt('f-exp','—'); setTxt('f-last','—'); setTxt('pb-key','—');
+      setW('pb-up',0); setW('pb-neu',0); setW('pb-down',0); return;
     }
-    var dir=p.up?'up':p.down?'down':'flat';
-    if(call)call.setAttribute('data-dir',dir);
-    if(arrow)arrow.textContent=p.up?'▲':p.down?'▼':'■';
-    if(vd)vd.textContent=p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT';
-    if(meta)meta.textContent=selCoin+' · '+selTf+' · '+Math.round(p.conf*100)+'% '+(p.conf_label||'');
-    if(tgt)tgt.textContent=p.target||'—';
-    if(st){
-      st.innerHTML = p.status==='pending'
-        ? '<span class="badge badge-warn">Pending · waiting for candle</span>'
-        : (p.correct ? '<span class="badge badge-good">Resolved · correct</span>'
-                     : '<span class="badge badge-bad">Resolved · incorrect</span>');
-    }
-    var probBar='<span class="pbar">'
-      +'<i style="width:'+(p.bull*100)+'%;background:var(--good)"></i>'
-      +'<i style="width:'+(p.neu*100)+'%;background:#94a3b8"></i>'
-      +'<i style="width:'+(p.bear*100)+'%;background:var(--bad)"></i></span>'
-      +'<div class="pkey muted">up '+Math.round(p.bull*100)+'% · flat '+Math.round(p.neu*100)+'% · down '+Math.round(p.bear*100)+'%</div>';
-    var exp=(p.exp_low!=null)?(fmtPrice(p.exp_low)+' – '+fmtPrice(p.exp_high)):'—';
-    if(facts)facts.innerHTML=
-       fact('Confidence',Math.round(p.conf*100)+'% <span class="muted">'+(p.conf_label||'')+'</span>')
-      +fact('Probability',probBar)
-      +fact('Expected close',exp)
-      +fact('Last close',fmtPrice(p.ref));
+    setAttr(call,'data-dir',p.up?'up':p.down?'down':'flat');
+    setTxt('hero-arrow',p.up?'▲':p.down?'▼':'■');
+    setTxt('hero-verdict',p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT');
+    setTxt('hero-meta',selCoin+' · '+selTf+' · '+Math.round(p.conf*100)+'% '+(p.conf_label||''));
+    setTxt('hero-target',p.target||'—');
+    var st=document.getElementById('hero-status');
+    var sh = p.status==='pending' ? '<span class="badge badge-warn">Pending · waiting for candle</span>'
+      : (p.correct ? '<span class="badge badge-good">Resolved · correct</span>'
+                   : '<span class="badge badge-bad">Resolved · incorrect</span>');
+    if(st&&st.innerHTML!==sh)st.innerHTML=sh;
+    setTxt('f-conf',Math.round(p.conf*100)+'%'+(p.conf_label?(' '+p.conf_label):''));
+    setW('pb-up',(p.bull*100),'var(--good)'); setW('pb-neu',(p.neu*100),'#94a3b8'); setW('pb-down',(p.bear*100),'var(--bad)');
+    setTxt('pb-key','up '+Math.round(p.bull*100)+'% · flat '+Math.round(p.neu*100)+'% · down '+Math.round(p.bear*100)+'%');
+    setTxt('f-exp',(p.exp_low!=null)?(fmtPrice(p.exp_low)+' – '+fmtPrice(p.exp_high)):'—');
+    setTxt('f-last',fmtPrice(p.ref));
   }
-  function renderChart(){
-    var svg=document.getElementById('hero-svg'), empty=document.getElementById('chart-empty'),
-        label=document.getElementById('chart-label'), range=document.getElementById('chart-range');
+  function updateChart(){
     var p=(DATA.pred[selCoin]||{})[selTf]; var s=(p&&p.series)?p.series:[];
-    if(label)label.textContent=selCoin?(selCoin+' '+selTf+' · recent close'):'Recent price';
-    if(!svg)return;
-    if(s.length<2){svg.innerHTML='';if(empty)empty.hidden=false;if(range)range.textContent='';return;}
+    setTxt('chart-label',selCoin?(selCoin+' '+selTf+' · recent close'):'Recent price');
+    var empty=document.getElementById('chart-empty');
+    var area=document.getElementById('ch-area'),line=document.getElementById('ch-line'),dot=document.getElementById('ch-dot');
+    if(!line)return;
+    if(s.length<2){ if(empty)empty.hidden=false; setAttr(area,'d',''); setAttr(line,'d',''); setAttr(dot,'cx','-10'); setTxt('chart-range',''); return; }
     if(empty)empty.hidden=true;
     var W=600,H=150,pad=10;
     var min=Math.min.apply(null,s),max=Math.max.apply(null,s),span=(max-min)||1;
-    var pts=s.map(function(v,i){
-      return [pad+(W-2*pad)*(i/(s.length-1)), pad+(H-2*pad)*(1-(v-min)/span)];});
-    var line=pts.map(function(pt,i){return (i?'L':'M')+pt[0].toFixed(1)+' '+pt[1].toFixed(1);}).join(' ');
-    var col=p.up?'#16a34a':p.down?'#dc2626':'#64748b';
-    var area='M '+pts[0][0].toFixed(1)+' '+(H-pad);
-    pts.forEach(function(pt){area+=' L '+pt[0].toFixed(1)+' '+pt[1].toFixed(1);});
-    area+=' L '+pts[pts.length-1][0].toFixed(1)+' '+(H-pad)+' Z';
-    var last=pts[pts.length-1];
-    svg.innerHTML=
-      '<defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1">'
-      +'<stop offset="0" stop-color="'+col+'" stop-opacity="0.16"/>'
-      +'<stop offset="1" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
-      +'<path d="'+area+'" fill="url(#cg)"/>'
-      +'<path d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-      +'<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="3.5" fill="'+col+'"/>';
-    if(range)range.textContent=fmtPrice(min)+' – '+fmtPrice(max);
+    var pts=s.map(function(v,i){return [pad+(W-2*pad)*(i/(s.length-1)), pad+(H-2*pad)*(1-(v-min)/span)];});
+    var ld=pts.map(function(pt,i){return (i?'L':'M')+pt[0].toFixed(1)+' '+pt[1].toFixed(1);}).join(' ');
+    var ad='M '+pts[0][0].toFixed(1)+' '+(H-pad);
+    pts.forEach(function(pt){ad+=' L '+pt[0].toFixed(1)+' '+pt[1].toFixed(1);});
+    ad+=' L '+pts[pts.length-1][0].toFixed(1)+' '+(H-pad)+' Z';
+    var col=p.up?'#16a34a':p.down?'#dc2626':'#64748b', last=pts[pts.length-1];
+    setAttr(area,'d',ad); setAttr(line,'d',ld); setAttr(line,'stroke',col);
+    setAttr(dot,'cx',last[0].toFixed(1)); setAttr(dot,'cy',last[1].toFixed(1)); setAttr(dot,'fill',col);
+    setAttr(document.getElementById('cg0'),'stop-color',col); setAttr(document.getElementById('cg1'),'stop-color',col);
+    setTxt('chart-range',fmtPrice(min)+' – '+fmtPrice(max));
   }
   function applyCoinVisibility(){
     var any=false;
@@ -1515,7 +1532,7 @@ _JS = """
   function syncRecent(){
     filterState.coin=selCoin||'all'; filterState.tf=selTf||'all'; applyFilters();
   }
-  function renderAll(){ ensureSel(); buildSegs(); renderHero(); renderChart(); applyCoinVisibility(); syncRecent(); }
+  function renderAll(){ ensureSel(); buildSegs(); updateHeroValues(); updateChart(); applyCoinVisibility(); syncRecent(); }
 
   // "Settings" chip -> open + scroll to the settings panel (kept at the bottom)
   (function(){
@@ -1526,51 +1543,56 @@ _JS = """
 
   var statusEl=document.getElementById('refresh-status');
   var liveChip=document.getElementById('live-chip');
-  function setStatus(kind,text){
-    if(statusEl)statusEl.textContent=text;
-    if(liveChip)liveChip.setAttribute('data-state',kind);
+  // Silent by default: text stays "Live" (no "Refreshing…" flip). Only an
+  // error changes it. This removes the header flicker / layout shift.
+  function setStatus(kind){
+    if(liveChip)liveChip.setAttribute('data-state',kind==='err'?'err':'ok');
+    if(statusEl){var t=(kind==='err')?'Update failed, retrying…':'Live';
+      if(statusEl.textContent!==t)statusEl.textContent=t;}
   }
   function logBox(){var t=document.getElementById('log-table');return t?t.closest('.table-scroll'):null;}
 
+  var lastSig=(document.body.getAttribute('data-sig')||'');
   var busy=false;
-  function refresh(){
+  // Partial data refresh: hits the JSON endpoint, updates VALUES silently, and
+  // re-applies section HTML ONLY when the data signature actually changed.
+  function fetchData(){
     if(busy)return;
     var modal=document.getElementById('modal');
-    if(modal && !modal.hidden) return;   // don't disrupt an open confirmation
-    busy=true; setStatus('busy','Refreshing…');
+    if(modal && !modal.hidden) return;   // never disrupt an open confirmation
+    busy=true;
     var scrollY=window.scrollY;
     var lb=logBox(); var logTop=lb?lb.scrollTop:0;
-    fetch(window.location.pathname,{credentials:'same-origin',cache:'no-store'})
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
-      .then(function(html){
-        var doc=new DOMParser().parseFromString(html,'text/html');
-        SECTIONS.forEach(function(id){
-          var cur=document.getElementById(id), nxt=doc.getElementById(id);
-          if(cur&&nxt&&cur.innerHTML!==nxt.innerHTML) cur.innerHTML=nxt.innerHTML;
-        });
-        var lu=document.getElementById('last-updated'), lun=doc.getElementById('last-updated');
-        if(lu&&lun) lu.textContent=lun.textContent;
-        // refresh the embedded hero/chart data, then re-render everything for
-        // the CURRENT selection (which is preserved in selCoin / selTf).
-        var nd=doc.getElementById('dash-data'), cd=document.getElementById('dash-data');
-        if(nd&&cd) cd.textContent=nd.textContent;
-        DATA=readData();
-        wireAll();
-        renderAll();
-        var lb2=logBox(); if(lb2) lb2.scrollTop=logTop;
-        window.scrollTo(0,scrollY);
-        setStatus('ok','Live');
+    fetch('/api/dashboard-data?sig='+encodeURIComponent(lastSig),
+          {credentials:'same-origin',cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(j){
+        console.log("Partial dashboard data refresh");
+        if(j.hero) DATA=j.hero;
+        updateHeroValues(); updateChart();           // silent value-only updates
+        if(j.updated) setTxt('last-updated','Updated '+j.updated);
+        if(j.sig && j.sig!==lastSig && j.html){       // data changed -> swap sections
+          lastSig=j.sig;
+          Object.keys(j.html).forEach(function(id){
+            var el=document.getElementById(id); if(el&&j.html[id])el.outerHTML=j.html[id];
+          });
+          wireAll(); applyCoinVisibility(); syncRecent();
+          var lb2=logBox(); if(lb2) lb2.scrollTop=logTop;
+          window.scrollTo(0,scrollY);
+        } else if(j.sig){ lastSig=j.sig; }
+        setStatus('ok');
       })
-      .catch(function(){ setStatus('err','Live update failed. Retrying…'); })
+      .catch(function(){ setStatus('err'); })
       .then(function(){ busy=false; });
   }
 
-  wireAll(); renderAll(); setStatus('ok','Live');
-  if(REFRESH>0){ setInterval(refresh, REFRESH*1000); }
+  console.log("Initial dashboard load");
+  wireAll(); renderAll(); setStatus('ok');
+  if(REFRESH>0){ setInterval(fetchData, REFRESH*1000); }
 
-  // Manual Refresh button -> partial refresh (never a full page reload)
+  // Manual Refresh button -> same silent partial refresh (never a full reload)
   var rbtn=document.querySelector('a.btn[href="/"]');
-  if(rbtn) rbtn.addEventListener('click',function(e){ e.preventDefault(); refresh(); });
+  if(rbtn) rbtn.addEventListener('click',function(e){ e.preventDefault(); fetchData(); });
 })();
 </script>
 """
@@ -1619,7 +1641,7 @@ def build_dashboard_html(
 <meta name="description" content="Research dashboard for validating crypto next-candle prediction accuracy.">
 <title>TradeBotVol | Prediction Dashboard</title>
 <style>{_CSS}</style></head>
-<body data-refresh="{refresh_attr}">
+<body data-refresh="{refresh_attr}" data-sig="{_data_sig(all_df)}">
 <div class="shell">
   {_sidebar()}
   <main class="content">
@@ -1747,6 +1769,55 @@ def serve_dashboard(
         finally:
             storage.close()
 
+    def api_payload(client_sig: str) -> bytes:
+        """JSON for the silent partial refresh. Reads the same prediction log as
+        the page (no prediction/scoring/storage logic). Returns the hero data +
+        a data signature every time, and the (rarely-changing) section HTML only
+        when the signature differs from what the client already shows."""
+        storage = PredictionStorage(
+            db_path, csv_path, sqlite_enabled=True, csv_enabled=False
+        )
+        try:
+            all_df = storage.load_dataframe()
+        except Exception as exc:  # pragma: no cover - defensive
+            storage.close()
+            return json.dumps({"error": str(exc)}).encode("utf-8")
+        try:
+            resolved = (
+                all_df[all_df["actual_direction"].notna()].copy()
+                if len(all_df) else all_df
+            )
+            report = (
+                build_report(resolved)
+                if len(resolved)
+                else {
+                    "groups": [], "overall_accuracy_pct": 0.0, "total_resolved": 0,
+                    "best_timeframe": None, "worst_timeframe": None,
+                    "best_symbol": None, "worst_symbol": None,
+                }
+            )
+            sig = _data_sig(all_df)
+            tz = display_tz_label(offset_hours)
+            updated = to_display_time(datetime.now(timezone.utc), offset_hours) + " " + tz
+            payload = {
+                "updated": updated,
+                "sig": sig,
+                "hero": _dashboard_data(all_df, offset_hours),
+            }
+            if sig != client_sig:  # data changed -> send fresh section HTML
+                coins = _coin_groups(all_df, report)
+                payload["html"] = {
+                    "sec-verdict": _verdict(resolved, report),
+                    "overview": _kpis(all_df, resolved, report),
+                    "sec-validation": _validation_health(all_df, resolved, report),
+                    "sec-rankings": _rankings(report),
+                    "coins": _coin_accordion(coins, offset_hours),
+                    "log": _recent_log(all_df, offset_hours),
+                }
+            return json.dumps(payload).encode("utf-8")
+        finally:
+            storage.close()
+
     class Handler(BaseHTTPRequestHandler):
         def _deny(self) -> None:
             self.send_response(401)
@@ -1787,6 +1858,22 @@ def serve_dashboard(
             # sensitive (no secrets, DB contents, logs or prediction internals).
             if self.path in ("/health", "/healthz"):
                 body = health_payload()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            # Read-only JSON for the silent partial refresh (same access rule as
+            # the page view). Exposes only prediction-log data — no secrets/logs.
+            if self.path.split("?", 1)[0] == "/api/dashboard-data":
+                if protect_view and not authorized(self.headers):
+                    self._deny()
+                    return
+                query = self.path.split("?", 1)[1] if "?" in self.path else ""
+                client_sig = parse_qs(query).get("sig", [""])[0]
+                body = api_payload(client_sig)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
