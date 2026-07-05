@@ -329,8 +329,10 @@ def _header(generated: str, refresh_seconds: int | None, tz: str) -> str:
   </div>
   <div class="chips">
     {live}
+    <span class="chip chip-sel" id="sel-chip" hidden>—</span>
     <span class="chip">Source: SQLite / CSV prediction log</span>
     <span class="chip chip-muted" id="last-updated">Updated {_esc(generated)} {_esc(tz)}</span>
+    <button class="chip chip-btn" id="settings-jump" type="button" hidden>⚙ Settings</button>
   </div>
 </header>"""
 
@@ -435,7 +437,7 @@ def _settings_panel(controls_enabled: bool, config_path: str | None) -> str:
     nt = _esc(raw.get("neutral_threshold_pct", 0.03))
     mc = _esc(raw.get("min_confidence", 0.55))
     return f"""
-<details class="card disc">
+<details class="card disc" id="settings-panel">
   <summary><span class="card-title">⚙ Settings</span>
     <span class="muted">change what the bot predicts — saves &amp; restarts</span></summary>
   <form method="post" action="/settings" class="settings-form"
@@ -766,8 +768,8 @@ def _coin_accordion(coins: list[dict], offset_hours: float) -> str:
         )
     return f"""
 <section id="coins" aria-label="Performance by coin">
-  <div class="section-head"><h2>Performance by coin</h2>
-    <span class="muted">tap a coin to expand its timeframes &amp; predictions</span></div>
+  <div class="section-head"><h2>Selected coin performance</h2>
+    <span class="muted">detailed timeframes &amp; predictions for the coin chosen above</span></div>
   <div class="coin-list">{''.join(blocks)}</div>
 </section>"""
 
@@ -836,6 +838,101 @@ def _error_page(message: str, refresh_seconds: int | None) -> str:
 <body><main class="shell"><div class="content"><div class="notice notice-error">
 <div class="notice-icon">⚠</div><div><div class="notice-title">Could not load prediction data</div>
 <div class="notice-body">{_esc(message)}</div></div></div></div></main></body></html>"""
+
+
+def _dashboard_data(all_df: pd.DataFrame, offset_hours: float) -> dict:
+    """Serialize the latest per-(coin, timeframe) prediction plus a recent price
+    series, for the top hero panel + chart. Reads the existing prediction log
+    only — no prediction, model, scoring, Binance or storage logic is involved.
+    """
+    out: dict = {"coins": [], "tfs": {}, "pred": {}}
+    if all_df.empty:
+        return out
+    df = all_df.copy()
+    df["_coin"] = df["symbol"].map(_base_coin)
+    order = df.groupby("_coin").size().sort_values(ascending=False)
+    out["coins"] = [str(c) for c in order.index.tolist()]
+    for coin in out["coins"]:
+        cdf = df[df["_coin"] == coin]
+        tfs = sorted(
+            cdf["timeframe"].unique().tolist(),
+            key=lambda t: TIMEFRAME_MINUTES.get(str(t), 9999),
+        )
+        out["tfs"][coin] = [str(t) for t in tfs]
+        out["pred"][coin] = {}
+        for tf in tfs:
+            tdf = cdf[cdf["timeframe"] == tf].sort_values("id")
+            if tdf.empty:
+                continue
+            last = tdf.iloc[-1]
+            pdir = str(last["predicted_direction"])
+            ref = float(last["reference_close"]) if pd.notna(last.get("reference_close")) else 0.0
+            mn, mx = last.get("expected_move_min_pct"), last.get("expected_move_max_pct")
+            lo = hi = None
+            if ref > 0 and mn is not None and mx is not None and pd.notna(mn) and pd.notna(mx):
+                lo, hi = expected_price_range(ref, float(mn), float(mx))
+            actual = last.get("actual_direction")
+            resolved = pd.notna(actual)
+            correct = (int(last.get("prediction_correct") or 0) == 1) if resolved else None
+            series = [
+                float(x) for x in tdf["reference_close"].tail(48).tolist()
+                if pd.notna(x) and x > 0
+            ]
+            out["pred"][coin][str(tf)] = {
+                "dir": pdir,
+                "up": pdir == BULLISH,
+                "down": pdir == BEARISH,
+                "bull": round(float(last["bullish_probability"]), 4),
+                "bear": round(float(last["bearish_probability"]), 4),
+                "neu": round(float(last["neutral_probability"]), 4),
+                "conf": round(float(last["confidence"]) if pd.notna(last.get("confidence")) else 0.0, 4),
+                "conf_label": str(last.get("confidence_label") or ""),
+                "ref": ref,
+                "exp_low": (round(lo, 4) if lo is not None else None),
+                "exp_high": (round(hi, 4) if hi is not None else None),
+                "target": to_display_time(last.get("target_candle_time", ""), offset_hours),
+                "status": "resolved" if resolved else "pending",
+                "correct": correct,
+                "actual": (str(actual) if resolved else None),
+                "series": series,
+            }
+    return out
+
+
+def _hero() -> str:
+    """Static skeleton for the top prediction hero + chart. The coin/timeframe
+    selectors and all values are filled by JS from the embedded dashboard data."""
+    return """
+<section class="card hero" id="sec-hero" aria-label="Next candle prediction">
+  <div class="hero-head-row">
+    <div>
+      <div class="hero-kicker">NEXT CANDLE PREDICTION</div>
+      <div class="hero-sel">
+        <div class="seg" id="coin-seg" role="tablist" aria-label="Coin"></div>
+        <div class="seg" id="tf-seg" role="tablist" aria-label="Timeframe"></div>
+      </div>
+    </div>
+    <div class="hero-when muted">target candle <span id="hero-target">—</span></div>
+  </div>
+  <div class="hero-grid">
+    <div class="hero-call" id="hero-call">
+      <div class="hero-arrow" id="hero-arrow">–</div>
+      <div>
+        <div class="hero-verdict" id="hero-verdict">Waiting for data…</div>
+        <div class="hero-meta muted" id="hero-meta">—</div>
+        <div class="hero-status" id="hero-status"></div>
+      </div>
+    </div>
+    <div class="hero-facts" id="hero-facts"></div>
+    <div class="hero-chartwrap">
+      <div class="hero-chart-top"><span id="chart-label">Recent price</span>
+        <span id="chart-range"></span></div>
+      <svg class="hero-svg" id="hero-svg" viewBox="0 0 600 150"
+           preserveAspectRatio="none" aria-label="recent price chart"></svg>
+      <div class="empty" id="chart-empty" hidden>Market chart data unavailable.</div>
+    </div>
+  </div>
+</section>"""
 
 
 # ---------------------------------------------------------------------- #
@@ -1197,6 +1294,54 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 #live-chip[data-state=busy] .dot{background:var(--warn)}
 #live-chip[data-state=err]{color:#b21c1c;background:var(--bad-soft);border-color:#f6cccc}
 #live-chip[data-state=err] .dot{background:var(--bad);animation:none}
+.chip-btn{cursor:pointer;font-family:inherit}
+.chip-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:#cdd9f6}
+.chip-sel{font-weight:700;color:var(--accent);background:var(--accent-soft);border-color:#cdd9f6}
+
+/* ===== Next-candle prediction hero ===== */
+.hero{padding:0;overflow:hidden}
+.hero .hero-head-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;
+  padding:18px 22px 8px;flex-wrap:wrap}
+.hero-kicker{font-size:11px;letter-spacing:.11em;color:var(--muted-2);font-weight:700;margin-bottom:9px}
+.hero-sel{display:flex;gap:10px;flex-wrap:wrap}
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:12px;padding:3px;gap:2px}
+.segbtn{border:none;background:transparent;color:var(--muted);font-weight:650;font-size:13px;
+  padding:6px 14px;border-radius:9px;cursor:pointer;transition:.15s;font-family:inherit}
+.segbtn:hover{color:var(--text)}
+.segbtn.active{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-sm)}
+.hero-when{font-size:12px;padding-top:4px;white-space:nowrap}
+.hero-grid{display:grid;grid-template-columns:1.15fr 1fr 1.5fr;align-items:stretch}
+.hero-call{display:flex;gap:16px;align-items:center;padding:12px 22px 22px}
+.hero-arrow{width:66px;height:66px;flex:0 0 66px;border-radius:18px;display:grid;place-items:center;
+  font-size:32px;font-weight:800;color:#fff;background:#94a3b8;box-shadow:var(--shadow)}
+.hero-call[data-dir=up] .hero-arrow{background:linear-gradient(180deg,#22c55e,#15a344)}
+.hero-call[data-dir=down] .hero-arrow{background:linear-gradient(180deg,#f2557a,#dc2626)}
+.hero-verdict{font-size:20px;font-weight:760;letter-spacing:-.01em;line-height:1.2}
+.hero-call[data-dir=up] .hero-verdict{color:var(--good)}
+.hero-call[data-dir=down] .hero-verdict{color:var(--bad)}
+.hero-meta{font-size:12.5px;margin:3px 0 8px}
+.hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
+  border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
+.fact-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2);margin-bottom:2px}
+.fact-v{font-weight:650;font-size:14px;font-variant-numeric:tabular-nums}
+.pbar{display:flex;height:8px;width:130px;border-radius:999px;overflow:hidden;background:#eef2f7;margin-top:4px}
+.pbar i{display:block;height:100%}
+.pkey{font-size:10px;margin-top:4px}
+.hero-chartwrap{padding:14px 20px 18px;position:relative;display:flex;flex-direction:column;min-width:0}
+.hero-chart-top{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted);
+  margin-bottom:6px}
+.hero-svg{width:100%;height:150px;display:block}
+.hero-status .badge{margin-top:2px}
+
+/* the coin/timeframe are chosen in the hero, so hide the log's duplicate filters */
+.fgroup[data-group="coin"],.fgroup[data-group="tf"]{display:none}
+
+@media(max-width:900px){
+  .hero-grid{grid-template-columns:1fr}
+  .hero-facts{border-left:none;border-right:none;
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+}
 """
 
 _JS = """
@@ -1260,6 +1405,125 @@ _JS = """
   }
   function wireAll(){wireAccordions();wireFilters();wireModal();}
 
+  /* ---------- next-candle prediction hero + chart (existing data only) ---------- */
+  function readData(){
+    try{return JSON.parse(document.getElementById('dash-data').textContent);}
+    catch(e){return {coins:[],tfs:{},pred:{}};}
+  }
+  var DATA=readData();
+  var selCoin='', selTf='';
+  try{selCoin=localStorage.getItem('tbv_coin')||'';selTf=localStorage.getItem('tbv_tf')||'';}catch(e){}
+  function ensureSel(){
+    if(!DATA.coins.length){selCoin='';selTf='';return;}
+    if(DATA.coins.indexOf(selCoin)<0)selCoin=DATA.coins[0];
+    var tfs=DATA.tfs[selCoin]||[];
+    if(tfs.indexOf(selTf)<0)selTf=tfs[0]||'';
+  }
+  function saveSel(){try{localStorage.setItem('tbv_coin',selCoin);localStorage.setItem('tbv_tf',selTf);}catch(e){}}
+  function fmtPrice(v){
+    if(v==null)return '—'; var a=Math.abs(v); var d=a>=100?2:a>=1?4:6;
+    return Number(v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+  }
+  function seg(id,items,cur,attr,on){
+    var el=document.getElementById(id); if(!el)return;
+    el.innerHTML=items.map(function(v){
+      return '<button class="segbtn'+(v===cur?' active':'')+'" type="button" data-'+attr+'="'+v+'">'+v+'</button>';
+    }).join('');
+    el.querySelectorAll('.segbtn').forEach(function(b){
+      b.addEventListener('click',function(){on(b.getAttribute('data-'+attr));});
+    });
+  }
+  function buildSegs(){
+    seg('coin-seg',DATA.coins,selCoin,'coin',function(c){selCoin=c;ensureSel();saveSel();renderAll();});
+    seg('tf-seg',(DATA.tfs[selCoin]||[]),selTf,'tf',function(t){selTf=t;saveSel();renderAll();});
+  }
+  function fact(l,v){return '<div class="fact"><div class="fact-l">'+l+'</div><div class="fact-v">'+v+'</div></div>';}
+  function renderHero(){
+    var sc=document.getElementById('sel-chip');
+    if(sc){ if(selCoin){sc.hidden=false;sc.textContent=selCoin+' · '+selTf;} else sc.hidden=true; }
+    var p=(DATA.pred[selCoin]||{})[selTf];
+    var call=document.getElementById('hero-call'), arrow=document.getElementById('hero-arrow'),
+        vd=document.getElementById('hero-verdict'), meta=document.getElementById('hero-meta'),
+        st=document.getElementById('hero-status'), facts=document.getElementById('hero-facts'),
+        tgt=document.getElementById('hero-target');
+    if(!p){
+      if(arrow)arrow.textContent='–'; if(call)call.setAttribute('data-dir','flat');
+      if(vd)vd.textContent='No prediction yet';
+      if(meta)meta.textContent=selCoin?(selCoin+' · '+selTf):'';
+      if(st)st.innerHTML=''; if(facts)facts.innerHTML=''; if(tgt)tgt.textContent='—'; return;
+    }
+    var dir=p.up?'up':p.down?'down':'flat';
+    if(call)call.setAttribute('data-dir',dir);
+    if(arrow)arrow.textContent=p.up?'▲':p.down?'▼':'■';
+    if(vd)vd.textContent=p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT';
+    if(meta)meta.textContent=selCoin+' · '+selTf+' · '+Math.round(p.conf*100)+'% '+(p.conf_label||'');
+    if(tgt)tgt.textContent=p.target||'—';
+    if(st){
+      st.innerHTML = p.status==='pending'
+        ? '<span class="badge badge-warn">Pending · waiting for candle</span>'
+        : (p.correct ? '<span class="badge badge-good">Resolved · correct</span>'
+                     : '<span class="badge badge-bad">Resolved · incorrect</span>');
+    }
+    var probBar='<span class="pbar">'
+      +'<i style="width:'+(p.bull*100)+'%;background:var(--good)"></i>'
+      +'<i style="width:'+(p.neu*100)+'%;background:#94a3b8"></i>'
+      +'<i style="width:'+(p.bear*100)+'%;background:var(--bad)"></i></span>'
+      +'<div class="pkey muted">up '+Math.round(p.bull*100)+'% · flat '+Math.round(p.neu*100)+'% · down '+Math.round(p.bear*100)+'%</div>';
+    var exp=(p.exp_low!=null)?(fmtPrice(p.exp_low)+' – '+fmtPrice(p.exp_high)):'—';
+    if(facts)facts.innerHTML=
+       fact('Confidence',Math.round(p.conf*100)+'% <span class="muted">'+(p.conf_label||'')+'</span>')
+      +fact('Probability',probBar)
+      +fact('Expected close',exp)
+      +fact('Last close',fmtPrice(p.ref));
+  }
+  function renderChart(){
+    var svg=document.getElementById('hero-svg'), empty=document.getElementById('chart-empty'),
+        label=document.getElementById('chart-label'), range=document.getElementById('chart-range');
+    var p=(DATA.pred[selCoin]||{})[selTf]; var s=(p&&p.series)?p.series:[];
+    if(label)label.textContent=selCoin?(selCoin+' '+selTf+' · recent close'):'Recent price';
+    if(!svg)return;
+    if(s.length<2){svg.innerHTML='';if(empty)empty.hidden=false;if(range)range.textContent='';return;}
+    if(empty)empty.hidden=true;
+    var W=600,H=150,pad=10;
+    var min=Math.min.apply(null,s),max=Math.max.apply(null,s),span=(max-min)||1;
+    var pts=s.map(function(v,i){
+      return [pad+(W-2*pad)*(i/(s.length-1)), pad+(H-2*pad)*(1-(v-min)/span)];});
+    var line=pts.map(function(pt,i){return (i?'L':'M')+pt[0].toFixed(1)+' '+pt[1].toFixed(1);}).join(' ');
+    var col=p.up?'#16a34a':p.down?'#dc2626':'#64748b';
+    var area='M '+pts[0][0].toFixed(1)+' '+(H-pad);
+    pts.forEach(function(pt){area+=' L '+pt[0].toFixed(1)+' '+pt[1].toFixed(1);});
+    area+=' L '+pts[pts.length-1][0].toFixed(1)+' '+(H-pad)+' Z';
+    var last=pts[pts.length-1];
+    svg.innerHTML=
+      '<defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1">'
+      +'<stop offset="0" stop-color="'+col+'" stop-opacity="0.16"/>'
+      +'<stop offset="1" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
+      +'<path d="'+area+'" fill="url(#cg)"/>'
+      +'<path d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+      +'<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="3.5" fill="'+col+'"/>';
+    if(range)range.textContent=fmtPrice(min)+' – '+fmtPrice(max);
+  }
+  function applyCoinVisibility(){
+    var any=false;
+    document.querySelectorAll('details.coin').forEach(function(d){
+      var s=d.querySelector('.coin-sym'); var sym=s?s.textContent.trim():'';
+      var show=(sym===selCoin); if(show)any=true;
+      d.style.display=show?'':'none'; d.open=show;
+    });
+    return any;
+  }
+  function syncRecent(){
+    filterState.coin=selCoin||'all'; filterState.tf=selTf||'all'; applyFilters();
+  }
+  function renderAll(){ ensureSel(); buildSegs(); renderHero(); renderChart(); applyCoinVisibility(); syncRecent(); }
+
+  // "Settings" chip -> open + scroll to the settings panel (kept at the bottom)
+  (function(){
+    var jump=document.getElementById('settings-jump'), panel=document.getElementById('settings-panel');
+    if(jump){ if(!panel){jump.hidden=true;} else { jump.hidden=false;
+      jump.addEventListener('click',function(){panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'start'});}); } }
+  })();
+
   var statusEl=document.getElementById('refresh-status');
   var liveChip=document.getElementById('live-chip');
   function setStatus(kind,text){
@@ -1276,8 +1540,6 @@ _JS = """
     busy=true; setStatus('busy','Refreshing…');
     var scrollY=window.scrollY;
     var lb=logBox(); var logTop=lb?lb.scrollTop:0;
-    var openSyms=[].slice.call(document.querySelectorAll('details.coin[open]')).map(function(d){
-      var s=d.querySelector('.coin-sym'); return s?s.textContent:'';});
     fetch(window.location.pathname,{credentials:'same-origin',cache:'no-store'})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
       .then(function(html){
@@ -1288,11 +1550,13 @@ _JS = """
         });
         var lu=document.getElementById('last-updated'), lun=doc.getElementById('last-updated');
         if(lu&&lun) lu.textContent=lun.textContent;
+        // refresh the embedded hero/chart data, then re-render everything for
+        // the CURRENT selection (which is preserved in selCoin / selTf).
+        var nd=doc.getElementById('dash-data'), cd=document.getElementById('dash-data');
+        if(nd&&cd) cd.textContent=nd.textContent;
+        DATA=readData();
         wireAll();
-        document.querySelectorAll('details.coin').forEach(function(d){
-          var s=d.querySelector('.coin-sym'); d.open=openSyms.indexOf(s?s.textContent:'')>=0;
-        });
-        applyFilters();
+        renderAll();
         var lb2=logBox(); if(lb2) lb2.scrollTop=logTop;
         window.scrollTo(0,scrollY);
         setStatus('ok','Live');
@@ -1301,7 +1565,7 @@ _JS = """
       .then(function(){ busy=false; });
   }
 
-  wireAll(); applyFilters(); setStatus('ok','Live');
+  wireAll(); renderAll(); setStatus('ok','Live');
   if(REFRESH>0){ setInterval(refresh, REFRESH*1000); }
 
   // Manual Refresh button -> partial refresh (never a full page reload)
@@ -1340,6 +1604,7 @@ def build_dashboard_html(
         }
     )
     coins = _coin_groups(all_df, report)
+    data_json = json.dumps(_dashboard_data(all_df, offset_hours)).replace("</", "<\\/")
 
     tz = display_tz_label(offset_hours)
     generated = to_display_time(datetime.now(timezone.utc), offset_hours)
@@ -1360,19 +1625,21 @@ def build_dashboard_html(
   <main class="content">
     {_header(generated, refresh_seconds, tz)}
     {_research_notice()}
-    {_verdict(resolved, report)}
+    {_hero()}
     {_control_panel(controls_enabled, control_message)}
-    {_settings_panel(controls_enabled, config_path)}
-    {_how_to_read()}
     {_kpis(all_df, resolved, report)}
+    {_verdict(resolved, report)}
     {_validation_health(all_df, resolved, report)}
     {_rankings(report)}
     {_coin_accordion(coins, offset_hours)}
     {_recent_log(all_df, offset_hours)}
+    {_settings_panel(controls_enabled, config_path)}
+    {_how_to_read()}
     <footer>Prediction-only research tool · times in {_esc(tz)} ·
     judge from large samples, not small ones.</footer>
   </main>
 </div>
+<script type="application/json" id="dash-data">{data_json}</script>
 {_modal()}
 {_JS}
 </body></html>"""
