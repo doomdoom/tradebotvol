@@ -109,6 +109,8 @@ def main() -> int:
             auth_user=auth_user,
             auth_password_hash=auth_hash,
             protect_view=not public_view,
+            market_type=config.market_type,
+            allowed_symbols=config.symbols,
         )
         return 0
 

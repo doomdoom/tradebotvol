@@ -832,7 +832,7 @@ def _dashboard_data(all_df: pd.DataFrame, offset_hours: float) -> dict:
     series, for the top hero panel + chart. Reads the existing prediction log
     only — no prediction, model, scoring, Binance or storage logic is involved.
     """
-    out: dict = {"coins": [], "tfs": {}, "pred": {}}
+    out: dict = {"coins": [], "tfs": {}, "pred": {}, "sym": {}}
     if all_df.empty:
         return out
     df = all_df.copy()
@@ -841,6 +841,7 @@ def _dashboard_data(all_df: pd.DataFrame, offset_hours: float) -> dict:
     out["coins"] = [str(c) for c in order.index.tolist()]
     for coin in out["coins"]:
         cdf = df[df["_coin"] == coin]
+        out["sym"][coin] = str(cdf["symbol"].iloc[-1])  # BTC -> BTCUSDT
         tfs = sorted(
             cdf["timeframe"].unique().tolist(),
             key=lambda t: TIMEFRAME_MINUTES.get(str(t), 9999),
@@ -938,6 +939,45 @@ def _hero() -> str:
       <div class="empty" id="chart-empty" hidden>Market chart data unavailable.</div>
     </div>
   </div>
+</section>"""
+
+
+def _market_chart() -> str:
+    """Static skeleton for the live candlestick chart. All values (candles,
+    price, OHLC, countdown, signal) are drawn by JS from /api/market-candles."""
+    return """
+<section class="card mkt" id="sec-market" aria-label="Live market chart">
+  <div class="mkt-head">
+    <div>
+      <div class="hero-kicker">LIVE MARKET</div>
+      <div class="mkt-title"><span id="mkt-pair">—</span>
+        <span class="mkt-state" id="mkt-state">connecting…</span></div>
+    </div>
+    <div class="mkt-price">
+      <span class="mkt-price-v" id="mkt-price">—</span>
+      <span class="mkt-dir badge badge-neutral" id="mkt-dir">—</span>
+    </div>
+  </div>
+  <div class="mkt-grid">
+    <div class="mkt-chartwrap">
+      <svg class="mkt-svg" id="mkt-svg" viewBox="0 0 720 300"
+           preserveAspectRatio="none" aria-label="candlestick chart">
+        <g id="mkt-grid"></g><g id="mkt-plot"></g>
+      </svg>
+      <div class="mkt-signal" id="mkt-signal" hidden></div>
+      <div class="empty mkt-empty" id="mkt-empty">Waiting for live candle data…</div>
+    </div>
+    <div class="mkt-panel">
+      <div class="mkt-stat"><span>Open</span><b id="mkt-o">—</b></div>
+      <div class="mkt-stat"><span>High</span><b id="mkt-h">—</b></div>
+      <div class="mkt-stat"><span>Low</span><b id="mkt-l">—</b></div>
+      <div class="mkt-stat"><span>Close (live)</span><b id="mkt-c">—</b></div>
+      <div class="mkt-stat"><span>Candle closes in</span><b id="mkt-countdown">—</b></div>
+      <div class="mkt-stat"><span>Updated</span><b id="mkt-updated">—</b></div>
+    </div>
+  </div>
+  <div class="mkt-note muted">Live market data is shown for visualization only.
+  This dashboard does not execute trades.</div>
 </section>"""
 
 
@@ -1354,6 +1394,35 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 /* the coin/timeframe are chosen in the hero, so hide the log's duplicate filters */
 .fgroup[data-group="coin"],.fgroup[data-group="tf"]{display:none}
 
+/* ===== live candlestick chart ===== */
+.mkt{padding:18px 22px}
+.mkt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.mkt-title{font-size:16px;font-weight:750;display:flex;gap:10px;align-items:center}
+.mkt-state{font-size:11px;color:var(--muted);font-weight:500}
+.mkt-price{text-align:right;white-space:nowrap}
+.mkt-price-v{font-size:22px;font-weight:760;font-variant-numeric:tabular-nums}
+.mkt-dir{margin-left:8px;vertical-align:middle}
+.mkt-grid{display:grid;grid-template-columns:1fr 210px;gap:18px;margin-top:12px;align-items:stretch}
+.mkt-chartwrap{position:relative;min-width:0}
+.mkt-svg{width:100%;height:300px;display:block;
+  background:linear-gradient(180deg,#fbfcff,#f5f8fd);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.mkt-signal{position:absolute;top:12px;left:12px;display:flex;gap:7px;align-items:center;
+  background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;font-weight:650;box-shadow:var(--shadow-sm)}
+.mkt-signal .ar{font-size:14px}
+.mkt-signal[data-dir=up]{color:var(--good);border-color:#bfe6cd}
+.mkt-signal[data-dir=down]{color:var(--bad);border-color:#f6cccc}
+.mkt-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:var(--surface-2);border-radius:var(--radius-sm)}
+.mkt-empty[hidden]{display:none}
+.mkt-panel{display:flex;flex-direction:column;gap:8px;justify-content:center}
+.mkt-stat{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:9px 13px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.mkt-stat span{color:var(--muted)}
+.mkt-stat b{font-variant-numeric:tabular-nums}
+.mkt-note{margin-top:12px;font-size:11.5px}
+@media(max-width:820px){ .mkt-grid{grid-template-columns:1fr} .mkt-svg{height:240px} }
+
 @media(max-width:900px){
   .hero-grid{grid-template-columns:1fr}
   .hero-facts{border-left:none;border-right:none;
@@ -1519,7 +1588,93 @@ _JS = """
   function syncRecent(){
     filterState.coin=selCoin||'all'; filterState.tf=selTf||'all'; applyFilters();
   }
-  function renderAll(){ ensureSel(); buildSegs(); updateHeroValues(); updateChart(); applyCoinVisibility(); syncRecent(); }
+  function renderAll(){ ensureSel(); buildSegs(); updateHeroValues(); updateChart(); applyCoinVisibility(); syncRecent(); fetchMarket(); }
+
+  /* ---------- live candlestick chart (read-only Binance klines) ---------- */
+  var mktBusy=false, mktCloseMs=0, mktHasData=false, mktKey='';
+  function mktSym(){ return (DATA.sym&&DATA.sym[selCoin])||(selCoin?selCoin+'USDT':''); }
+  function fmtDur(ms){ if(ms<0)ms=0; var s=Math.floor(ms/1000),m=Math.floor(s/60); s=s%60;
+    return (m<10?'0':'')+m+':'+(s<10?'0':'')+s; }
+  function mktErr(){
+    setTxt('mkt-state','Live market data unavailable. Retrying…');
+    if(!mktHasData){var e=document.getElementById('mkt-empty');
+      if(e){e.hidden=false;e.textContent='Live market data unavailable. Retrying…';}}
+  }
+  function fetchMarket(){
+    var sym=mktSym(), tf=selTf;
+    if(!sym||!tf) return;
+    if(mktBusy) return; mktBusy=true;
+    // if the coin/tf changed since last draw, reset the "has data" guard so the
+    // empty state can show while the new symbol loads
+    var key=sym+'|'+tf; if(key!==mktKey){ mktKey=key; mktHasData=false;
+      setTxt('mkt-pair',sym+' · '+tf); }
+    fetch('/api/market-candles?symbol='+encodeURIComponent(sym)+'&timeframe='+encodeURIComponent(tf),
+          {credentials:'same-origin',cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(m){
+        if(m.error || !m.candles || m.candles.length<1){ mktErr(); return; }
+        if((m.symbol+'|'+m.timeframe)!==mktKey) return;   // selection changed mid-flight
+        drawMarket(m);
+      })
+      .catch(function(){ mktErr(); })
+      .then(function(){ mktBusy=false; });
+  }
+  function drawMarket(m){
+    mktHasData=true;
+    var e=document.getElementById('mkt-empty'); if(e)e.hidden=true;
+    setTxt('mkt-state','live'); setTxt('mkt-pair',m.symbol+' · '+m.timeframe);
+    var cs=m.candles, cur=cs[cs.length-1];
+    mktCloseMs=cur.close_time+1;
+    var price=(m.current_price!=null)?m.current_price:cur.close;
+    setTxt('mkt-price',fmtPrice(price));
+    setTxt('mkt-o',fmtPrice(cur.open)); setTxt('mkt-h',fmtPrice(cur.high));
+    setTxt('mkt-l',fmtPrice(cur.low)); setTxt('mkt-c',fmtPrice(cur.close));
+    setTxt('mkt-updated',m.updated_at||'—');
+    var up=cur.close>=cur.open, dd=document.getElementById('mkt-dir');
+    if(dd){ dd.textContent=up?'▲ up':'▼ down';
+      dd.className='mkt-dir badge '+(up?'badge-good':'badge-bad'); }
+    drawCandles(cs);
+    var p=(DATA.pred[selCoin]||{})[selTf], sig=document.getElementById('mkt-signal');
+    if(sig){
+      if(p){ sig.hidden=false; sig.setAttribute('data-dir',p.up?'up':p.down?'down':'flat');
+        sig.innerHTML='<span class="ar">'+(p.up?'▲':p.down?'▼':'■')+'</span> Model signal: '
+          +(p.up?'UP':p.down?'DOWN':'FLAT')+' · '+Math.round(p.conf*100)+'%';
+      } else sig.hidden=true;
+    }
+    updateCountdown();
+  }
+  function drawCandles(cs){
+    var plot=document.getElementById('mkt-plot'), grid=document.getElementById('mkt-grid');
+    if(!plot) return;
+    var W=720,H=300,padT=10,padB=18,padL=6,padR=58;
+    var lo=Infinity,hi=-Infinity;
+    cs.forEach(function(c){ if(c.low<lo)lo=c.low; if(c.high>hi)hi=c.high; });
+    if(!isFinite(lo)||!isFinite(hi)){ plot.innerHTML=''; return; }
+    var pd=(hi-lo)*0.08||1; lo-=pd; hi+=pd; var span=(hi-lo)||1;
+    function Y(v){ return padT+(H-padT-padB)*(1-(v-lo)/span); }
+    var n=cs.length, cw=(W-padL-padR)/n;
+    var g='';
+    for(var k=0;k<=4;k++){ var yy=padT+(H-padT-padB)*k/4, pv=hi-(hi-lo)*k/4;
+      g+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+yy.toFixed(1)+'" y2="'+yy.toFixed(1)+'" stroke="#e7ecf5"/>'
+        +'<text x="'+(W-padR+5)+'" y="'+(yy+3).toFixed(1)+'" font-size="10" fill="#93a0b8">'+fmtPrice(pv)+'</text>';
+    }
+    grid.innerHTML=g;
+    var b='';
+    for(var i=0;i<n;i++){ var c=cs[i], xc=padL+i*cw+cw/2, up=c.close>=c.open,
+        col=up?'#16a34a':'#dc2626', bw=Math.max(1,cw*0.62),
+        yo=Y(c.open), ycl=Y(c.close), top=Math.min(yo,ycl), hgt=Math.max(1,Math.abs(yo-ycl));
+      b+='<line x1="'+xc.toFixed(1)+'" x2="'+xc.toFixed(1)+'" y1="'+Y(c.high).toFixed(1)+'" y2="'+Y(c.low).toFixed(1)+'" stroke="'+col+'" stroke-width="1"/>'
+        +'<rect x="'+(xc-bw/2).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hgt.toFixed(1)+'" rx="0.6" fill="'+col+'"'
+        +(i===n-1?' stroke="#0c1730" stroke-opacity="0.18"':'')+'/>';
+    }
+    var cp=cs[n-1].close, cy=Y(cp);
+    b+='<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+cy.toFixed(1)+'" y2="'+cy.toFixed(1)+'" stroke="#3457d5" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>';
+    plot.innerHTML=b;
+  }
+  function updateCountdown(){
+    var el=document.getElementById('mkt-countdown'); if(!el)return;
+    el.textContent = mktCloseMs ? fmtDur(mktCloseMs-Date.now()) : '—';
+  }
 
   // "Settings" chip -> open + scroll to the settings panel (kept at the bottom)
   (function(){
@@ -1576,6 +1731,9 @@ _JS = """
   console.log("Initial dashboard load");
   wireAll(); renderAll(); setStatus('ok');
   if(REFRESH>0){ setInterval(fetchData, REFRESH*1000); }
+  // live market chart: refresh candles ~every 2.5s, tick the countdown every 1s
+  setInterval(fetchMarket, 2500);
+  setInterval(updateCountdown, 1000);
 
   // Manual Refresh button -> same silent partial refresh (never a full reload)
   var rbtn=document.querySelector('a.btn[href="/"]');
@@ -1634,6 +1792,7 @@ def build_dashboard_html(
   <main class="content">
     {_header(generated, refresh_seconds, tz)}
     {_hero()}
+    {_market_chart()}
     {_control_panel(controls_enabled, control_message)}
     {_kpis(all_df, resolved, report)}
     {_verdict(resolved, report)}
@@ -1682,6 +1841,8 @@ def serve_dashboard(
     auth_user: str | None = None,
     auth_password_hash: str | None = None,
     protect_view: bool = True,
+    market_type: str = "futures",
+    allowed_symbols: list | None = None,
 ) -> None:
     """Serve a live dashboard that regenerates from the DB on every request.
 
@@ -1711,6 +1872,57 @@ def serve_dashboard(
     pending_message: dict[str, str] = {"text": ""}
     auth_required = bool(auth_user and auth_password_hash)
     start_monotonic = time.monotonic()
+    allowed = set(allowed_symbols or [])
+    # Read-only live market data (public Binance klines). Reuses the existing
+    # BinanceDataClient; a short cache + lock keep Binance calls light even with
+    # several browsers polling. No trading endpoints, no API keys.
+    market = {"client": None, "cache": {}, "lock": __import__("threading").Lock()}
+
+    def market_payload(symbol: str, timeframe: str) -> bytes:
+        if allowed and symbol not in allowed:
+            return json.dumps({"error": "unknown symbol", "symbol": symbol}).encode("utf-8")
+        if timeframe not in TIMEFRAME_MINUTES:
+            return json.dumps({"error": "unknown timeframe"}).encode("utf-8")
+        key = (symbol, timeframe)
+        now = time.time()
+        with market["lock"]:
+            cached = market["cache"].get(key)
+            if cached and now - cached[0] < 1.5:
+                return cached[1]
+        try:
+            if market["client"] is None:
+                from .binance_data import BinanceDataClient
+                market["client"] = BinanceDataClient(market_type)
+            df = market["client"].get_klines(
+                symbol, timeframe, limit=100, only_closed=False
+            )
+        except Exception as exc:
+            return json.dumps({
+                "error": "market data unavailable",
+                "detail": str(exc)[:120], "symbol": symbol, "timeframe": timeframe,
+            }).encode("utf-8")
+        if df.empty:
+            return json.dumps({
+                "symbol": symbol, "timeframe": timeframe, "candles": [],
+                "current_price": None,
+            }).encode("utf-8")
+        candles = [
+            {"open_time": int(r.open_time_ms), "open": float(r.open),
+             "high": float(r.high), "low": float(r.low), "close": float(r.close),
+             "volume": float(r.volume), "close_time": int(r.close_time_ms)}
+            for r in df.itertuples(index=False)
+        ]
+        payload = {
+            "symbol": symbol, "timeframe": timeframe, "candles": candles,
+            "current_price": float(df["close"].iloc[-1]),
+            "updated_at": to_display_time(datetime.now(timezone.utc), offset_hours)
+            + " " + display_tz_label(offset_hours),
+            "server_time_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+        }
+        body = json.dumps(payload).encode("utf-8")
+        with market["lock"]:
+            market["cache"][key] = (now, body)
+        return body
 
     def authorized(headers) -> bool:
         if not auth_required:
@@ -1860,6 +2072,23 @@ def serve_dashboard(
                 query = self.path.split("?", 1)[1] if "?" in self.path else ""
                 client_sig = parse_qs(query).get("sig", [""])[0]
                 body = api_payload(client_sig)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            # Read-only live market candles (public Binance klines). No secrets,
+            # no trading — validated against the configured symbols/timeframes.
+            if self.path.split("?", 1)[0] == "/api/market-candles":
+                if protect_view and not authorized(self.headers):
+                    self._deny()
+                    return
+                q = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                sym = (q.get("symbol", [""])[0] or "").upper()
+                tfr = q.get("timeframe", [""])[0]
+                body = market_payload(sym, tfr)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
