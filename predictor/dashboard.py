@@ -844,17 +844,18 @@ def _error_page(message: str, refresh_seconds: int | None) -> str:
 
 _CSS = """
 :root{
-  --bg:#f3f6fc; --surface:#ffffff; --surface-2:#f7f9fd; --border:#e6eaf2;
-  --text:#0f1b34; --muted:#647089; --muted-2:#93a0b8;
-  --accent:#2563eb; --accent-soft:#e9f0fe;
-  --good:#16a34a; --good-soft:#e7f6ec;
+  --bg:#eef2f9; --surface:#ffffff; --surface-2:#f6f8fd; --border:#e7ecf5;
+  --text:#0c1730; --muted:#5c6b86; --muted-2:#93a0b8;
+  --accent:#3457d5; --accent-2:#5b7ff8; --accent-soft:#eaf0fe;
+  --good:#16a34a; --good-soft:#e7f7ed;
   --bad:#dc2626; --bad-soft:#fdecec;
-  --warn:#e08600; --warn-soft:#fdf2e2;
+  --warn:#dd8000; --warn-soft:#fdf3e3;
   --info:#0e8fb3; --info-soft:#e4f4f9;
-  --neutral:#647089;
-  --radius:18px; --radius-sm:12px;
-  --shadow:0 1px 2px rgba(15,27,52,.05), 0 8px 24px rgba(15,27,52,.05);
-  --shadow-sm:0 1px 2px rgba(15,27,52,.05);
+  --neutral:#5c6b86;
+  --radius:16px; --radius-sm:11px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.05);
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.06);
+  --shadow-lg:0 16px 40px rgba(16,24,40,.12);
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -1063,6 +1064,79 @@ footer{margin-top:34px;color:var(--muted-2);font-size:12px;text-align:center}
   .hide-sm{display:none}
   .content{padding:18px 14px 54px}
   .kpi-value{font-size:25px}
+}
+
+/* ===== UI polish (presentation only — markup, classes & behaviour unchanged) ===== */
+body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  background:
+    radial-gradient(900px 480px at 100% -6%, rgba(52,87,213,.06), transparent 60%),
+    radial-gradient(680px 380px at -8% 2%, rgba(14,143,179,.05), transparent 55%),
+    var(--bg);
+  background-attachment:fixed}
+h1{letter-spacing:-.02em}
+.topbar h1{font-size:22px}
+.rail-logo{box-shadow:0 6px 16px rgba(52,87,213,.35)}
+
+.card,.kpi,.coin,.verdict,.chip,.btn,.fbtn,.tf-card,.rank-card,.rail-item,.coin>summary,.log tbody tr{
+  transition:box-shadow .18s ease,transform .18s ease,background .18s ease,border-color .18s ease,filter .18s ease}
+.card:hover,.kpi:hover,.rank-card:hover,.tf-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px)}
+
+/* KPI cards: hover lift + tone accent line + aligned figures */
+.kpi{position:relative;overflow:hidden}
+.kpi::after{content:"";position:absolute;left:0;right:0;top:0;height:3px;opacity:0;transition:opacity .18s;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.kpi:hover::after{opacity:.9}
+.kpi[data-tone=good]::after{background:linear-gradient(90deg,var(--good),#39c46c)}
+.kpi[data-tone=warn]::after{background:linear-gradient(90deg,var(--warn),#f5a524)}
+.kpi[data-tone=bad]::after{background:linear-gradient(90deg,var(--bad),#f2557a)}
+.kpi-value,.coin-acc,.tf-acc,.hstat-v,.rank-a,.log td{font-variant-numeric:tabular-nums}
+
+/* buttons */
+.btn{border-radius:11px}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:linear-gradient(180deg,var(--accent-2),var(--accent));border-color:transparent;
+  box-shadow:0 4px 12px rgba(52,87,213,.28)}
+.btn-primary:hover{filter:brightness(1.05);background:linear-gradient(180deg,var(--accent-2),var(--accent))}
+.btn:focus-visible,.fbtn:focus-visible,.coin>summary:focus-visible,.settings-form input:focus-visible,.rail-item:focus-visible{
+  outline:none;box-shadow:0 0 0 3px rgba(52,87,213,.22)}
+
+/* coin accordion */
+.coin>summary:hover{background:var(--surface-2)}
+.coin[open]{box-shadow:var(--shadow-lg)}
+.coin:hover{border-color:#d9e1f0}
+.coin-ava{box-shadow:0 4px 10px rgba(16,24,40,.18)}
+
+/* timeframe cards: tone accent bar */
+.tf-card{position:relative;overflow:hidden}
+.tf-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted-2);opacity:.55}
+.tf-card[data-tone=good]::before{background:var(--good);opacity:1}
+.tf-card[data-tone=warn]::before{background:var(--warn);opacity:1}
+.tf-card[data-tone=bad]::before{background:var(--bad);opacity:1}
+.tf-card[data-tone=info]::before{background:var(--info);opacity:1}
+
+/* verdict banner accent */
+.verdict{position:relative;overflow:hidden;padding-left:22px}
+.verdict::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--info)}
+.verdict[data-tone=good]::before{background:var(--good)}
+.verdict[data-tone=warn]::before{background:var(--warn)}
+.verdict[data-tone=bad]::before{background:var(--bad)}
+
+/* tables, badges, filters, rail */
+.log tbody tr:hover{background:var(--accent-soft)}
+.badge{padding:3px 10px;font-weight:600}
+.fbtn:hover{background:var(--accent-soft);border-color:#cdd9f6;color:var(--accent)}
+.fbtn.active{box-shadow:0 3px 10px rgba(52,87,213,.26)}
+.rail-item.active{background:var(--accent-soft);color:var(--accent)}
+
+/* modal: soft blur + entrance */
+.modal{backdrop-filter:blur(3px)}
+.modal-card{box-shadow:var(--shadow-lg);animation:pop .16s ease-out}
+@keyframes pop{from{transform:translateY(10px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms!important;transition:none!important}
+  .card:hover,.kpi:hover,.rank-card:hover,.tf-card:hover,.btn:hover{transform:none}
 }
 """
 
