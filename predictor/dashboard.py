@@ -1138,6 +1138,58 @@ h1{letter-spacing:-.02em}
   *{animation-duration:.001ms!important;transition:none!important}
   .card:hover,.kpi:hover,.rank-card:hover,.tf-card:hover,.btn:hover{transform:none}
 }
+
+/* ===== UI polish round 2 (presentation only — no markup/behaviour change) ===== */
+
+/* roomier sections & consistent titles */
+.content>*{margin-top:20px}
+h2{font-size:17.5px}
+.card{padding:20px 22px}
+
+/* glassy white cards with a whisper of gradient */
+.card,.kpi,.coin,.modal-card{background-image:linear-gradient(180deg,#ffffff,#fbfcff);border-color:#e9edf6}
+.tf-card,.rank-card,.hstat{background-image:linear-gradient(180deg,#fbfcff,#f4f7fd)}
+
+/* header refinements */
+.topbar{align-items:center}
+.subtitle{max-width:60ch;line-height:1.5}
+.chip{padding:7px 13px;font-weight:500}
+.chip-live{font-weight:600}
+.chip-muted{background:var(--surface-2)}
+
+/* controls: visually separate DANGEROUS actions from safe ones */
+.ctl-actions{align-items:center}
+.ctl-actions form:has(.btn-warn){margin-left:14px;padding-left:16px;border-left:1px solid var(--border)}
+.btn-danger:hover{background:var(--bad);color:#fff;border-color:var(--bad);
+  box-shadow:0 4px 12px rgba(220,38,38,.28)}
+.btn-warn:hover{background:var(--warn);color:#fff;border-color:var(--warn)}
+
+/* recent-predictions table: bounded scroll + sticky header (main log only) */
+.table-scroll:has(#log-table){max-height:560px;overflow:auto;border:1px solid var(--border);
+  border-radius:var(--radius-sm)}
+.table-scroll:has(#log-table) .log thead th{position:sticky;top:0;z-index:2;
+  background:#f5f8fd;border-bottom:1px solid var(--border)}
+.log tbody tr:last-child td{border-bottom:none}
+
+/* smooth reveal when a coin / disclosure opens */
+details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s ease}
+@keyframes reveal{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+/* crisper badges + slightly taller bars */
+.badge-good{box-shadow:inset 0 0 0 1px rgba(22,163,74,.12)}
+.badge-bad{box-shadow:inset 0 0 0 1px rgba(220,38,38,.12)}
+.badge-warn{box-shadow:inset 0 0 0 1px rgba(221,128,0,.14)}
+.bar{height:9px}
+
+/* mobile: full-width tappable buttons; dangerous group wraps below a divider */
+@media(max-width:620px){
+  .ctl-panel{align-items:stretch}
+  .ctl-actions{width:100%}
+  .ctl-actions form,.ctl-actions>.btn{flex:1 1 100%}
+  .ctl-actions .btn{width:100%}
+  .ctl-actions form:has(.btn-warn){margin-left:0;padding-left:0;border-left:none;
+    margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
+}
 """
 
 _JS = """
