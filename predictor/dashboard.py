@@ -337,19 +337,6 @@ def _header(generated: str, refresh_seconds: int | None, tz: str) -> str:
 </header>"""
 
 
-def _research_notice() -> str:
-    return """
-<div class="notice" role="note" aria-label="Research mode notice">
-  <div class="notice-icon" aria-hidden="true">🛈</div>
-  <div>
-    <div class="notice-title">Research mode only</div>
-    <div class="notice-body">This dashboard validates prediction accuracy only.
-    It does not execute trades and should not be connected to live trading until
-    accuracy is validated over a statistically significant sample.</div>
-  </div>
-</div>"""
-
-
 def _verdict(resolved: pd.DataFrame, report: dict) -> str:
     n = len(resolved)
     overall = report.get("overall_accuracy_pct", 0.0)
@@ -1646,7 +1633,6 @@ def build_dashboard_html(
   {_sidebar()}
   <main class="content">
     {_header(generated, refresh_seconds, tz)}
-    {_research_notice()}
     {_hero()}
     {_control_panel(controls_enabled, control_message)}
     {_kpis(all_df, resolved, report)}
