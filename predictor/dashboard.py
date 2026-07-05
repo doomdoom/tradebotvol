@@ -317,8 +317,8 @@ def _header(generated: str, refresh_seconds: int | None, tz: str) -> str:
     live = ""
     if refresh_seconds and refresh_seconds > 0:
         live = (
-            f'<span class="chip chip-live"><span class="dot"></span>'
-            f"Live refresh: {int(refresh_seconds)}s</span>"
+            '<span class="chip chip-live" id="live-chip"><span class="dot"></span>'
+            '<span id="refresh-status">Live</span></span>'
         )
     return f"""
 <header class="topbar">
@@ -330,7 +330,7 @@ def _header(generated: str, refresh_seconds: int | None, tz: str) -> str:
   <div class="chips">
     {live}
     <span class="chip">Source: SQLite / CSV prediction log</span>
-    <span class="chip chip-muted">Updated {_esc(generated)} {_esc(tz)}</span>
+    <span class="chip chip-muted" id="last-updated">Updated {_esc(generated)} {_esc(tz)}</span>
   </div>
 </header>"""
 
@@ -378,7 +378,7 @@ def _verdict(resolved: pd.DataFrame, report: dict) -> str:
             f"Across {_int(n)} scored predictions, accuracy is at or below random. Not reliable.",
         )
     return f"""
-<section class="verdict" data-tone="{tone}" aria-label="Current status">
+<section class="verdict" id="sec-verdict" data-tone="{tone}" aria-label="Current status">
   <div class="verdict-icon" aria-hidden="true">{icon}</div>
   <div><div class="verdict-head">{_esc(head)}</div>
     <div class="verdict-sub">{_esc(sub)}</div></div>
@@ -553,7 +553,7 @@ def _validation_health(all_df: pd.DataFrame, resolved: pd.DataFrame, report: dic
         for k, v in stats
     )
     return f"""
-<section class="card" aria-label="Validation health">
+<section class="card" id="sec-validation" aria-label="Validation health">
   <div class="card-head"><h2>Validation health</h2>{_badge(label, tone)}</div>
   <p class="muted card-note">{_esc(note)} Rankings and Strong/Weak labels stay hidden
   for any group below {MIN_SAMPLE_FOR_RANKING} resolved predictions.</p>
@@ -576,7 +576,7 @@ def _rankings(report: dict) -> str:
         )
 
     return f"""
-<section class="card" aria-label="Model rankings">
+<section class="card" id="sec-rankings" aria-label="Model rankings">
   <div class="card-head"><h2>Model rankings</h2></div>
   <p class="muted card-note">Shown only once a group has at least
   {MIN_SAMPLE_FOR_RANKING} resolved predictions.</p>
@@ -1190,54 +1190,123 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
   .ctl-actions form:has(.btn-warn){margin-left:0;padding-left:0;border-left:none;
     margin-top:6px;padding-top:10px;border-top:1px solid var(--border)}
 }
+
+/* live-refresh status chip states (partial AJAX indicator) */
+#live-chip{transition:background .2s,border-color .2s,color .2s}
+#live-chip[data-state=busy]{color:#a15b00;background:var(--warn-soft);border-color:#f6dcae}
+#live-chip[data-state=busy] .dot{background:var(--warn)}
+#live-chip[data-state=err]{color:#b21c1c;background:var(--bad-soft);border-color:#f6cccc}
+#live-chip[data-state=err] .dot{background:var(--bad);animation:none}
 """
 
 _JS = """
 <script>
 (function(){
-  // exclusive coin accordions (fallback for browsers without <details name>)
-  var coins=[].slice.call(document.querySelectorAll('details.coin'));
-  coins.forEach(function(d){d.addEventListener('toggle',function(){
-    if(d.open){coins.forEach(function(o){if(o!==d)o.open=false;});}
-  });});
+  "use strict";
+  var REFRESH=parseInt((document.body.getAttribute('data-refresh')||'0'),10);
+  // Only these data sections are swapped on live refresh. The header, research
+  // notice, controls panel, settings panel and modal are NEVER touched, so
+  // typing, the predictor status and open modals are preserved.
+  var SECTIONS=['sec-verdict','overview','sec-validation','sec-rankings','coins','log'];
+  var filterState={coin:'all',tf:'all',result:'all'};
 
-  // recent-log filters (coin / tf / result)
-  var state={coin:'all',tf:'all',result:'all'};
   function applyFilters(){
-    var rows=document.querySelectorAll('#log-table [data-row]');var shown=0;
+    document.querySelectorAll('.fbtn').forEach(function(x){
+      var f=x.getAttribute('data-f');
+      x.classList.toggle('active', x.getAttribute('data-v')===filterState[f]);
+    });
+    var rows=document.querySelectorAll('#log-table [data-row]'), shown=0;
     rows.forEach(function(r){
-      var ok=(state.coin==='all'||r.getAttribute('data-coin')===state.coin)
-        &&(state.tf==='all'||r.getAttribute('data-tf')===state.tf)
-        &&(state.result==='all'||r.getAttribute('data-result')===state.result);
+      var ok=(filterState.coin==='all'||r.getAttribute('data-coin')===filterState.coin)
+        &&(filterState.tf==='all'||r.getAttribute('data-tf')===filterState.tf)
+        &&(filterState.result==='all'||r.getAttribute('data-result')===filterState.result);
       r.style.display=ok?'':'none'; if(ok)shown++;
     });
     var e=document.querySelector('.filter-empty'); if(e)e.hidden=shown!==0;
   }
-  document.querySelectorAll('.fbtn').forEach(function(b){
-    b.addEventListener('click',function(){
-      var f=b.getAttribute('data-f');state[f]=b.getAttribute('data-v');
-      document.querySelectorAll('.fbtn[data-f="'+f+'"]').forEach(function(x){
-        x.classList.toggle('active',x===b);});
-      applyFilters();
+  function wireAccordions(){
+    var coins=[].slice.call(document.querySelectorAll('details.coin'));
+    coins.forEach(function(d){
+      if(d.__wired)return; d.__wired=true;
+      d.addEventListener('toggle',function(){
+        if(d.open){coins.forEach(function(o){if(o!==d)o.open=false;});}
+      });
     });
-  });
-
-  // confirmation modal for dangerous actions
-  var modal=document.getElementById('modal');
-  if(modal){
-    var msg=document.getElementById('modal-msg');var pending=null;
+  }
+  function wireFilters(){
+    document.querySelectorAll('.fbtn').forEach(function(b){
+      if(b.__wired)return; b.__wired=true;
+      b.addEventListener('click',function(){
+        filterState[b.getAttribute('data-f')]=b.getAttribute('data-v');
+        applyFilters();
+      });
+    });
+  }
+  function wireModal(){
+    var modal=document.getElementById('modal');
+    if(!modal||modal.__wired)return; modal.__wired=true;
+    var msg=document.getElementById('modal-msg'), pending=null;
     document.querySelectorAll('form[data-confirm]').forEach(function(f){
       f.addEventListener('submit',function(e){
         if(f.dataset.ok==='1')return;
-        e.preventDefault();pending=f;msg.textContent=f.getAttribute('data-confirm');
-        modal.hidden=false;
+        e.preventDefault(); pending=f;
+        if(msg)msg.textContent=f.getAttribute('data-confirm'); modal.hidden=false;
       });
     });
-    document.getElementById('modal-ok').onclick=function(){
-      if(pending){pending.dataset.ok='1';pending.submit();}};
-    document.getElementById('modal-cancel').onclick=function(){modal.hidden=true;pending=null;};
+    var ok=document.getElementById('modal-ok'), cancel=document.getElementById('modal-cancel');
+    if(ok)ok.onclick=function(){if(pending){pending.dataset.ok='1';pending.submit();}};
+    if(cancel)cancel.onclick=function(){modal.hidden=true;pending=null;};
     modal.addEventListener('click',function(e){if(e.target===modal){modal.hidden=true;pending=null;}});
   }
+  function wireAll(){wireAccordions();wireFilters();wireModal();}
+
+  var statusEl=document.getElementById('refresh-status');
+  var liveChip=document.getElementById('live-chip');
+  function setStatus(kind,text){
+    if(statusEl)statusEl.textContent=text;
+    if(liveChip)liveChip.setAttribute('data-state',kind);
+  }
+  function logBox(){var t=document.getElementById('log-table');return t?t.closest('.table-scroll'):null;}
+
+  var busy=false;
+  function refresh(){
+    if(busy)return;
+    var modal=document.getElementById('modal');
+    if(modal && !modal.hidden) return;   // don't disrupt an open confirmation
+    busy=true; setStatus('busy','Refreshing…');
+    var scrollY=window.scrollY;
+    var lb=logBox(); var logTop=lb?lb.scrollTop:0;
+    var openSyms=[].slice.call(document.querySelectorAll('details.coin[open]')).map(function(d){
+      var s=d.querySelector('.coin-sym'); return s?s.textContent:'';});
+    fetch(window.location.pathname,{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+      .then(function(html){
+        var doc=new DOMParser().parseFromString(html,'text/html');
+        SECTIONS.forEach(function(id){
+          var cur=document.getElementById(id), nxt=doc.getElementById(id);
+          if(cur&&nxt&&cur.innerHTML!==nxt.innerHTML) cur.innerHTML=nxt.innerHTML;
+        });
+        var lu=document.getElementById('last-updated'), lun=doc.getElementById('last-updated');
+        if(lu&&lun) lu.textContent=lun.textContent;
+        wireAll();
+        document.querySelectorAll('details.coin').forEach(function(d){
+          var s=d.querySelector('.coin-sym'); d.open=openSyms.indexOf(s?s.textContent:'')>=0;
+        });
+        applyFilters();
+        var lb2=logBox(); if(lb2) lb2.scrollTop=logTop;
+        window.scrollTo(0,scrollY);
+        setStatus('ok','Live');
+      })
+      .catch(function(){ setStatus('err','Live update failed. Retrying…'); })
+      .then(function(){ busy=false; });
+  }
+
+  wireAll(); applyFilters(); setStatus('ok','Live');
+  if(REFRESH>0){ setInterval(refresh, REFRESH*1000); }
+
+  // Manual Refresh button -> partial refresh (never a full page reload)
+  var rbtn=document.querySelector('a.btn[href="/"]');
+  if(rbtn) rbtn.addEventListener('click',function(e){ e.preventDefault(); refresh(); });
 })();
 </script>
 """
@@ -1274,20 +1343,18 @@ def build_dashboard_html(
 
     tz = display_tz_label(offset_hours)
     generated = to_display_time(datetime.now(timezone.utc), offset_hours)
-    refresh_meta = (
-        f'<meta http-equiv="refresh" content="{int(refresh_seconds)}">'
-        if refresh_seconds and refresh_seconds > 0
-        else ""
-    )
+    # Live updates are done in-browser via partial AJAX (see _JS) instead of a
+    # full-page <meta refresh>, so open accordions / filters / scroll / typing
+    # and open modals are preserved. This attribute carries the interval.
+    refresh_attr = int(refresh_seconds) if refresh_seconds and refresh_seconds > 0 else 0
 
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Research dashboard for validating crypto next-candle prediction accuracy.">
-{refresh_meta}
 <title>TradeBotVol | Prediction Dashboard</title>
 <style>{_CSS}</style></head>
-<body>
+<body data-refresh="{refresh_attr}">
 <div class="shell">
   {_sidebar()}
   <main class="content">
