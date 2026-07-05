@@ -1,0 +1,26 @@
+# Secrets & environment (NEVER commit these)
+.env
+*.pem
+*.key
+
+# Generated data, models, logs, snapshots
+data/
+models/
+logs/
+dashboard.html
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Packaging / deploy artifacts
+*.zip
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
