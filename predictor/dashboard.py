@@ -2004,7 +2004,8 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     <div><div class="hero-kicker">TESTNET TRADING BOT · FAKE MONEY</div>
       <div class="muted" style="font-size:12px;margin-top:4px">
         {_esc(s.get('timeframe','?'))} · ${float(s.get('notional',0)):.0f}/trade ·
-        {int(s.get('leverage',0))}x · SL {float(s.get('sl_pct',0))}% · trailing {float(s.get('trail_pct',0))}% ·
+        {int(s.get('leverage',0))}x · SL {float(s.get('sl_pct',0))}% ·
+        trail {float(s.get('trail_pct',0))}% {'from +%.0f%% ROI' % float(s['trail_activation_roi']) if s.get('trail_activation_roi') else ''} ·
         updated {_esc(s.get('updated_display',''))} {_esc(s.get('tz',''))}</div></div>
     <div style="text-align:right">{mode_badge}
       <div class="tn-bal">{bal_txt}<span class="muted"> fake USDT</span></div></div>

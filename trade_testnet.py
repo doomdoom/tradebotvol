@@ -78,6 +78,16 @@ def _round_step(qty: float, precision: int, step: float | None) -> float:
     return round(qty, precision)
 
 
+def _activation_move(args) -> float:
+    """Price-move fraction at which the trailing stop activates. If
+    --trail-activation-roi is set, it is derived from a target ROI on margin
+    (roi% / leverage); otherwise the fixed --trail-activation-pct is used."""
+    roi = getattr(args, "trail_activation_roi", 0.0) or 0.0
+    if roi > 0 and getattr(args, "leverage", 0):
+        return (roi / 100.0) / args.leverage
+    return args.trail_activation_pct / 100.0
+
+
 def _exit_prices(entry: float, side: str, sl_pct: float, act_pct: float,
                  price_precision: int) -> tuple[float, float]:
     """Return (stop_loss_price, trailing_activation_price). For a long the stop
@@ -164,9 +174,12 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
         trails[symbol] = {"close_side": close_side, "entry": entry, "stop": sl,
                           "peak": entry, "pp": pp, "qty": qty}
         bet = "price to rise" if side == "BUY" else "price to fall"
+        act_desc = (f"+{args.trail_activation_roi:.0f}% ROI"
+                    if getattr(args, "trail_activation_roi", 0) > 0
+                    else f"+{args.trail_activation_pct}%")
         msg = (f"Opened {direction} {_fmt_qty(qty)} {_base(symbol)} at ${_fmt_px(entry)} "
-               f"(betting {bet}) — stop-loss ${_fmt_px(sl)}, trailing stop to lock profit. "
-               f"{regime.capitalize()}, {conf:.0f}% confidence.")
+               f"(betting {bet}) — stop-loss ${_fmt_px(sl)}, trailing stop kicks in at "
+               f"{act_desc} to lock profit. {regime.capitalize()}, {conf:.0f}% confidence.")
         log.info("TESTNET %s: %s", tag, msg)
         _record(recent, symbol, "open", msg, off)
     except Exception as exc:
@@ -182,7 +195,7 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
     / down (short); once in profit it is floored at break-even+ so a winning
     trade cannot turn into a loss.
     """
-    act = args.trail_activation_pct / 100.0
+    act = _activation_move(args)  # activate trailing at this price move (may be ROI-based)
     trail = args.trail_pct / 100.0
     for symbol in config.symbols:
         try:
@@ -329,6 +342,7 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "timeframe": args.timeframe, "notional": args.notional,
         "leverage": args.leverage, "sl_pct": args.sl_pct,
         "trail_pct": args.trail_pct, "trail_activation_pct": args.trail_activation_pct,
+        "trail_activation_roi": getattr(args, "trail_activation_roi", 0.0),
         "symbols": config.symbols, "balance": balance, "equity": equity,
         "status": "trading" if len(positions) > 0 else "waiting",
         "status_text": status_text, "next_check": next_check,
@@ -354,8 +368,10 @@ def main() -> int:
     parser.add_argument("--trail-pct", type=float, default=0.2,
                         help="trailing-stop callback %% (smaller = locks profit faster; min 0.1)")
     parser.add_argument("--trail-activation-pct", type=float, default=0.15,
-                        help="profit %% at which the stop locks to break-even+ (must exceed "
-                             "~0.12%% round-trip fees to actually book profit)")
+                        help="price-move %% at which the stop locks + trailing starts")
+    parser.add_argument("--trail-activation-roi", type=float, default=0.0,
+                        help="if >0, activate trailing at this ROI%% on margin instead "
+                             "(price move = roi/leverage). e.g. 12 = trail from +12%% ROI")
     parser.add_argument("--live-testnet", action="store_true")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--state-file", default="reports/testnet_bot.json")
