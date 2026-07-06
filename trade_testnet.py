@@ -36,6 +36,7 @@ from predictor.binance_data import BinanceDataClient
 from predictor.config import load_config
 from predictor.logger import get_logger, setup_logging
 from predictor.prediction_engine import PredictionEngine
+from predictor.regime import regime_label
 from predictor.utils import (
     BEARISH,
     BULLISH,
@@ -46,6 +47,18 @@ from predictor.utils import (
     utc_now,
     utc_now_ms,
 )
+
+
+def _fmt_qty(q: float) -> str:
+    return f"{q:g}"
+
+
+def _fmt_px(v: float) -> str:
+    return f"{v:,.2f}" if v >= 1 else f"{v:.6f}"
+
+
+def _base(symbol: str) -> str:
+    return symbol.replace("USDT", "").replace("BUSD", "")
 
 log = get_logger("trade_testnet")
 
@@ -99,29 +112,32 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
                   off: float, trails: dict) -> None:
     side, result = _decide(engine, symbol, args.timeframe)
     tag = f"{symbol} {args.timeframe}"
+    conf = result.confidence * 100
+    regime = regime_label(result.market_regime)
     if side is None:
-        msg = (f"{result.predicted_direction} · conf {result.confidence*100:.0f}% · "
-               f"{result.market_regime.lower() or 'n/a'} — below gate, no trade")
+        msg = (f"No trade — signal too weak ({conf:.0f}% confidence) "
+               f"in a {regime} market")
         log.info("%s: %s", tag, msg)
         _record(recent, symbol, "no_trade", msg, off)
         return
 
     entry = float(result.reference_close)
     close_side = "SELL" if side == "BUY" else "BUY"
+    direction = "LONG" if side == "BUY" else "SHORT"
 
     if client is None:  # dry-run
         qty = args.notional / entry if entry else 0.0
-        sl, act = _exit_prices(entry, side, args.sl_pct, args.trail_activation_pct, 2)
-        msg = (f"would {side} ~{qty:.6f} (~${args.notional:.0f}) @ ~{entry:.2f} · "
-               f"SL {sl:.2f} · trail {args.trail_pct}% after +{args.trail_activation_pct}% · "
-               f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
+        msg = (f"Would open {direction} {_fmt_qty(round(qty, 6))} {_base(symbol)} "
+               f"(~${args.notional:.0f}) at ${_fmt_px(entry)} — {regime}, "
+               f"{conf:.0f}% confidence")
         log.info("[DRY] %s: %s", tag, msg)
         _record(recent, symbol, "would_trade", msg, off)
         return
 
     pos = client.position(symbol)
     if not pos["flat"]:
-        msg = f"already in position (amt {pos['amount']:.6f}, uPnL {pos['unrealized']:.2f}) — holding"
+        upnl = pos["unrealized"]
+        msg = f"Holding open trade (P&L {'+' if upnl >= 0 else ''}${upnl:.2f})"
         log.info("%s: %s", tag, msg)
         _record(recent, symbol, "hold", msg, off)
         return
@@ -147,9 +163,10 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
                    else entry * (1 + args.sl_pct / 100.0), pp)
         trails[symbol] = {"close_side": close_side, "entry": entry, "stop": sl,
                           "peak": entry, "pp": pp, "qty": qty}
-        msg = (f"opened {side} {qty:.6f} @ {entry:.2f} · stop {sl:.2f} · "
-               f"trailing {args.trail_pct}% (locks from +{args.trail_activation_pct}%) · "
-               f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
+        bet = "price to rise" if side == "BUY" else "price to fall"
+        msg = (f"Opened {direction} {_fmt_qty(qty)} {_base(symbol)} at ${_fmt_px(entry)} "
+               f"(betting {bet}) — stop-loss ${_fmt_px(sl)}, trailing stop to lock profit. "
+               f"{regime.capitalize()}, {conf:.0f}% confidence.")
         log.info("TESTNET %s: %s", tag, msg)
         _record(recent, symbol, "open", msg, off)
     except Exception as exc:
@@ -210,7 +227,8 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
                 cand = round(max(t["peak"] * (1 - trail), floor), pp)
                 if cand > t["stop"]:
                     t["stop"] = cand
-                    _record(recent, symbol, "trail", f"stop -> {cand} (price {price:.4f})", off)
+                    _record(recent, symbol, "trail",
+                            f"Raised stop to ${_fmt_px(cand)} to lock in profit", off)
             hit = price <= t["stop"]
         else:
             t["peak"] = min(t.get("peak", entry), price)
@@ -219,16 +237,17 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
                 cand = round(min(t["peak"] * (1 + trail), floor), pp)
                 if cand < t["stop"]:
                     t["stop"] = cand
-                    _record(recent, symbol, "trail", f"stop -> {cand} (price {price:.4f})", off)
+                    _record(recent, symbol, "trail",
+                            f"Lowered stop to ${_fmt_px(cand)} to lock in profit", off)
             hit = price >= t["stop"]
 
         if hit:
             try:
                 client.market_close(symbol, close_side, qty)
                 gain = (price - entry) if long else (entry - price)
+                outcome = "profit locked in ✓" if gain >= 0 else "loss cut"
                 _record(recent, symbol, "closed",
-                        f"closed @ {price:.4f} (stop {t['stop']}), "
-                        f"{'profit' if gain >= 0 else 'loss'} booked", off)
+                        f"Closed at ${_fmt_px(price)} — {outcome}", off)
                 log.info("%s: closed at %.4f (stop %.4f), booking %s",
                          symbol, price, t["stop"], "profit" if gain >= 0 else "loss")
                 trails.pop(symbol, None)
