@@ -137,13 +137,13 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
         client.cancel_all(symbol)  # clear any orphaned orders from a prior close
         client.set_leverage(symbol, args.leverage)
         client.market_order(symbol, side, qty)
-        client.close_trigger(symbol, close_side, sl, "stop")   # protective stop-loss
-        # Trailing is handled by _manage_positions (native trailing orders are
-        # rejected on the testnet endpoint) - remember this position to trail it.
+        # Stop-loss + trailing + take-profit are all handled client-side by
+        # _manage_positions (this testnet rejects conditional order types), so
+        # we only remember the position and its stop level here.
         trails[symbol] = {"close_side": close_side, "entry": price, "stop": sl,
-                          "pp": f["price_precision"]}
-        msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · SL {sl:.2f} · "
-               f"trailing {args.trail_pct}% (from +{args.trail_activation_pct}%) · "
+                          "peak": price, "pp": f["price_precision"], "qty": qty}
+        msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · stop {sl:.2f} · "
+               f"trailing {args.trail_pct}% (locks from +{args.trail_activation_pct}%) · "
                f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
         log.info("TESTNET %s: %s", tag, msg)
         _record(recent, symbol, "open", msg, off)
@@ -153,11 +153,15 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
 
 
 def _manage_positions(config, client, filters, trails: dict, args, recent: list, off: float) -> None:
-    """Client-side trailing stop: as price moves in your favour, ratchet the
-    stop-loss up (long) / down (short) to lock in profit. Runs frequently so it
-    also keeps the dashboard panel fresh. Native TRAILING_STOP_MARKET is not
-    accepted on the testnet order endpoint, so we trail a STOP_MARKET ourselves.
+    """Fully client-side stop-loss + trailing stop. This testnet rejects
+    conditional order types (STOP/TP/TRAILING, error -4120), so the bot watches
+    the price each tick and CLOSES with a plain market order when the stop or
+    trailed level is hit. As price moves in favour, the stop ratchets up (long)
+    / down (short); once in profit it is floored at break-even+ so a winning
+    trade cannot turn into a loss.
     """
+    act = args.trail_activation_pct / 100.0
+    trail = args.trail_pct / 100.0
     for symbol in config.symbols:
         try:
             pos = client.position(symbol)
@@ -173,39 +177,57 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
         long = pos["amount"] > 0
         close_side = "SELL" if long else "BUY"
         pp = filters.get(symbol, {}).get("price_precision", 2)
+        qty = abs(pos["amount"])
         t = trails.get(symbol)
         if t is None:  # adopt a position opened before this run (e.g. after restart)
-            t = {"close_side": close_side, "entry": pos["entry"], "stop": None, "pp": pp}
+            entry0 = pos["entry"]
+            stop0 = round(entry0 * (1 - args.sl_pct / 100.0) if long
+                          else entry0 * (1 + args.sl_pct / 100.0), pp)
+            t = {"close_side": close_side, "entry": entry0, "stop": stop0,
+                 "peak": entry0, "pp": pp, "qty": qty}
             trails[symbol] = t
-        entry = t["entry"] or pos["entry"]
+            try:
+                client.cancel_all(symbol)  # drop any stale/rejected exchange orders
+            except Exception:
+                pass
+        entry = t["entry"]
 
-        # Only trail once the trade is in profit past the activation threshold.
-        act = args.trail_activation_pct / 100.0
-        in_profit = price >= entry * (1 + act) if long else price <= entry * (1 - act)
-        if not in_profit:
-            continue
-
-        # "Always book profit": once in profit, never let the stop sit below a
-        # break-even+fees floor, so a winning trade cannot turn into a loss.
-        trail = args.trail_pct / 100.0
-        floor = entry * (1 + act) if long else entry * (1 - act)
+        # Track the best price and ratchet the trailing stop once in profit.
         if long:
-            candidate = round(min(max(price * (1 - trail), floor), price * 0.9995), pp)
+            t["peak"] = max(t.get("peak", entry), price)
+            if price >= entry * (1 + act):
+                floor = entry * (1 + act)                      # break-even+ lock
+                cand = round(max(t["peak"] * (1 - trail), floor), pp)
+                if cand > t["stop"]:
+                    t["stop"] = cand
+                    _record(recent, symbol, "trail", f"stop -> {cand} (price {price:.4f})", off)
+            hit = price <= t["stop"]
         else:
-            candidate = round(max(min(price * (1 + trail), floor), price * 1.0005), pp)
-        cur = t["stop"]
-        improved = cur is None or (candidate > cur if long else candidate < cur)
-        if not improved:
-            continue
-        try:
-            client.cancel_all(symbol)
-            client.close_trigger(symbol, close_side, candidate, "stop")
-            t["stop"] = candidate
-            log.info("%s: trailed stop -> %.4f (price %.4f, locking profit)",
-                     symbol, candidate, price)
-            _record(recent, symbol, "trail", f"stop moved to {candidate} (price {price:.4f})", off)
-        except Exception as exc:
-            log.warning("%s: trail update failed: %s", symbol, exc)
+            t["peak"] = min(t.get("peak", entry), price)
+            if price <= entry * (1 - act):
+                floor = entry * (1 - act)
+                cand = round(min(t["peak"] * (1 + trail), floor), pp)
+                if cand < t["stop"]:
+                    t["stop"] = cand
+                    _record(recent, symbol, "trail", f"stop -> {cand} (price {price:.4f})", off)
+            hit = price >= t["stop"]
+
+        if hit:
+            try:
+                client.market_close(symbol, close_side, qty)
+                gain = (price - entry) if long else (entry - price)
+                _record(recent, symbol, "closed",
+                        f"closed @ {price:.4f} (stop {t['stop']}), "
+                        f"{'profit' if gain >= 0 else 'loss'} booked", off)
+                log.info("%s: closed at %.4f (stop %.4f), booking %s",
+                         symbol, price, t["stop"], "profit" if gain >= 0 else "loss")
+                trails.pop(symbol, None)
+                try:
+                    client.cancel_all(symbol)
+                except Exception:
+                    pass
+            except Exception as exc:
+                log.warning("%s: market close failed: %s", symbol, exc)
 
 
 def _write_state(path: Path, args, client, config, recent: list, off: float) -> None:
@@ -352,8 +374,8 @@ def main() -> int:
             if now >= next_close + 2500:
                 one_pass()
                 next_close = current_candle_close_ms(utc_now_ms(), args.timeframe)
-            # Trail open positions + refresh the dashboard panel every ~8s (live).
-            if client is not None and now - last_manage >= 8000:
+            # Watch stops / trail + refresh the dashboard panel every ~5s (live).
+            if client is not None and now - last_manage >= 5000:
                 try:
                     _manage_positions(config, client, filters, trails, args, recent, off)
                     _write_state(state_path, args, client, config, recent, off)

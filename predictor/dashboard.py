@@ -1951,7 +1951,8 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     ) or '<tr><td colspan="5" class="muted">no open positions</td></tr>'
 
     ev_class = {"open": "badge-good", "would_trade": "badge-neutral", "hold": "badge-warn",
-                "no_trade": "badge-neutral", "error": "badge-bad", "skip": "badge-neutral"}
+                "no_trade": "badge-neutral", "error": "badge-bad", "skip": "badge-neutral",
+                "trail": "badge-info", "closed": "badge-good"}
     acts = "".join(
         f'<li><span class="tn-t muted">{_esc(a.get("time",""))}</span> '
         f'<span class="badge {ev_class.get(a.get("event"),"badge-neutral")}">'

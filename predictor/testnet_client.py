@@ -157,6 +157,15 @@ class BinanceTestnetClient:
             "type": "MARKET", "quantity": quantity,
         })
 
+    def market_close(self, symbol: str, side: str, quantity: float) -> dict:
+        """Close (reduce-only) a position with a plain MARKET order. Used for
+        client-side stop-loss / trailing / take-profit, because this testnet
+        rejects conditional STOP/TP/TRAILING order types (error -4120)."""
+        return self._signed("POST", "/fapi/v1/order", {
+            "symbol": symbol.upper(), "side": side.upper(),
+            "type": "MARKET", "quantity": quantity, "reduceOnly": "true",
+        })
+
     def close_trigger(self, symbol: str, side: str, stop_price: float,
                       kind: str) -> dict:
         """Place a STOP_MARKET (stop-loss) or TAKE_PROFIT_MARKET that closes the
