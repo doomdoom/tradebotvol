@@ -1,6 +1,6 @@
 {
   "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
-  "timeframes": ["5m", "15m", "1h"],
+  "timeframes": ["1m", "3m", "5m", "15m", "1h"],
   "prediction_mode": "rule_based",
   "market_type": "futures",
   "candle_limit": 1000,
