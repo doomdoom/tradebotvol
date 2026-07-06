@@ -352,8 +352,8 @@ def main() -> int:
             if now >= next_close + 2500:
                 one_pass()
                 next_close = current_candle_close_ms(utc_now_ms(), args.timeframe)
-            # Trail open positions + refresh the dashboard panel every ~20s.
-            if client is not None and now - last_manage >= 20000:
+            # Trail open positions + refresh the dashboard panel every ~8s (live).
+            if client is not None and now - last_manage >= 8000:
                 try:
                     _manage_positions(config, client, filters, trails, args, recent, off)
                     _write_state(state_path, args, client, config, recent, off)

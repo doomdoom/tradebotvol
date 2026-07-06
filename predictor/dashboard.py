@@ -1807,12 +1807,25 @@ _JS = """
       .then(function(){ busy=false; });
   }
 
+  // live testnet panel: refetch its inner HTML so uPnL / profit-loss update live
+  var tnBusy=false;
+  function fetchTestnet(){
+    var host=document.getElementById('sec-testnet'); if(!host||tnBusy) return; tnBusy=true;
+    fetch('/api/testnet-panel',{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){ return r.ok?r.text():null; })
+      .then(function(html){ if(html!=null && document.getElementById('sec-testnet')) document.getElementById('sec-testnet').innerHTML=html; })
+      .catch(function(){})
+      .then(function(){ tnBusy=false; });
+  }
+
   console.log("Initial dashboard load");
   wireAll(); renderAll(); setStatus('ok');
   if(REFRESH>0){ setInterval(fetchData, REFRESH*1000); }
   // live market chart: refresh candles ~every 2.5s, tick the countdown every 1s
   setInterval(fetchMarket, 2500);
   setInterval(updateCountdown, 1000);
+  // live testnet panel every 5s
+  fetchTestnet(); setInterval(fetchTestnet, 5000);
 
   // Manual Refresh button -> same silent partial refresh (never a full reload)
   var rbtn=document.querySelector('a.btn[href="/"]');
@@ -1886,22 +1899,26 @@ def _accuracy_lab(reports_dir: str = "reports") -> str:
 
 
 def _testnet_panel(reports_dir: str = "reports") -> str:
-    """Display the TESTNET trading bot's status (fake money). Reads
+    """Outer shell for the testnet panel; inner content is fetched live via
+    /api/testnet-panel so uPnL / profit-loss update in real time."""
+    return (f'<section class="card" id="sec-testnet" aria-label="Testnet trading bot">'
+            f'{_testnet_panel_inner(reports_dir)}</section>')
+
+
+def _testnet_panel_inner(reports_dir: str = "reports") -> str:
+    """Live inner HTML for the TESTNET trading bot panel (fake money). Reads
     reports/testnet_bot.json written by trade_testnet.py. Read-only; shows
     nothing that can place or affect a real trade."""
     path = Path(reports_dir) / "testnet_bot.json"
     if not path.exists():
-        return (
-            '<section class="card" id="sec-testnet"><div class="hero-kicker">'
-            'TESTNET TRADING BOT</div><p class="muted" style="margin:8px 0 0">'
-            'Not started yet. This will show a paper/testnet bot trading with '
-            '<b>fake money</b> once it is running on the server.</p></section>'
-        )
+        return ('<div class="hero-kicker">TESTNET TRADING BOT</div>'
+                '<p class="muted" style="margin:8px 0 0">Not started yet. This will show a '
+                'paper/testnet bot trading with <b>fake money</b> once it is running.</p>')
     try:
         s = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return ('<section class="card" id="sec-testnet"><div class="hero-kicker">'
-                'TESTNET TRADING BOT</div><p class="muted">status unavailable</p></section>')
+        return ('<div class="hero-kicker">TESTNET TRADING BOT</div>'
+                '<p class="muted">status unavailable</p>')
 
     mode = str(s.get("mode", "dry-run"))
     mode_badge = ('<span class="badge badge-good">live testnet</span>' if mode == "live-testnet"
@@ -1962,7 +1979,6 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
                         f'{"+" if (rt or 0)>=0 else ""}{float(rt or 0):.2f} USDT</b>')
 
     return f"""
-<section class="card" id="sec-testnet" aria-label="Testnet trading bot">
   <div class="tn-head">
     <div><div class="hero-kicker">TESTNET TRADING BOT · FAKE MONEY</div>
       <div class="muted" style="font-size:12px;margin-top:4px">
@@ -1993,8 +2009,7 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
   </div>
   <p class="muted" style="margin:10px 0 0;font-size:11.5px">Fake-money simulation on the
   Binance testnet. No real funds, no real orders. Not financial advice; this does not predict
-  or guarantee real profit.</p>
-</section>"""
+  or guarantee real profit.</p>"""
 
 
 def build_dashboard_html(
@@ -2347,6 +2362,23 @@ def serve_dashboard(
                 body = market_payload(sym, tfr)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            # Live inner HTML for the testnet trading panel (fake money status
+            # from the local JSON only — no secrets, no trading).
+            if self.path.split("?", 1)[0] == "/api/testnet-panel":
+                if protect_view and not authorized(self.headers):
+                    self._deny()
+                    return
+                try:
+                    body = _testnet_panel_inner().encode("utf-8")
+                except Exception as exc:
+                    body = f'<p class="muted">panel error: {_esc(str(exc))}</p>'.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
