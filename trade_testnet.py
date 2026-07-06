@@ -279,7 +279,8 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
     history: list = []
     realized_total = None
     balance = None
-    today_profit = today_loss = 0.0
+    today_profit = today_loss = today_fees = 0.0
+    total_fees = None
     equity = None
     today = (utc_now() + timedelta(hours=off)).strftime("%Y-%m-%d")
     if client is not None:
@@ -302,6 +303,22 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
                     })
         except Exception as exc:
             log.warning("state: could not read testnet account: %s", exc)
+        # Commission (fees) — the bot only sends MARKET orders, so every fill is
+        # a TAKER fill. Map each fill's fee by tradeId to attach it to the trade.
+        comm_by_trade: dict = {}
+        try:
+            comm_rows = client.income(income_type="COMMISSION", limit=300)
+            total_fees = round(sum(abs(float(r.get("income", 0))) for r in comm_rows), 4)
+            for r in comm_rows:
+                fee = abs(float(r.get("income", 0)))
+                if to_display_time(int(r.get("time", 0)), off).startswith(today):
+                    today_fees += fee
+                tid = r.get("tradeId")
+                if tid is not None:
+                    comm_by_trade[tid] = comm_by_trade.get(tid, 0.0) + fee
+            today_fees = round(today_fees, 4)
+        except Exception as exc:
+            log.warning("state: could not read fees: %s", exc)
         try:
             rows = client.income(income_type="REALIZED_PNL", limit=100)
             rows.sort(key=lambda r: int(r.get("time", 0)), reverse=True)
@@ -315,8 +332,11 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
                     else:
                         today_loss += pnl
                 if len(history) < 15:
+                    fee = comm_by_trade.get(r.get("tradeId"))
                     history.append({"time": ts, "symbol": str(r.get("symbol", "")),
-                                    "pnl": pnl, "win": pnl >= 0})
+                                    "pnl": pnl, "win": pnl >= 0,
+                                    "fee": round(fee, 4) if fee else None,
+                                    "fee_type": "taker"})
             today_profit = round(today_profit, 2)
             today_loss = round(today_loss, 2)
         except Exception as exc:
@@ -348,6 +368,7 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "status_text": status_text, "next_check": next_check,
         "today_profit": today_profit, "today_loss": today_loss,
         "today_net": round(today_profit + today_loss, 2),
+        "today_fees": today_fees, "total_fees": total_fees,
         "positions": positions, "recent": list(reversed(recent)),
         "history": history, "realized_total": realized_total,
     }

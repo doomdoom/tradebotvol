@@ -1420,7 +1420,7 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .lab-table td.pos,b.pos{color:var(--good);font-weight:650}
 .lab-table td.neg,b.neg{color:var(--bad);font-weight:650}
 .tn-hist .lab-table{max-height:230px}
-.tn-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.tn-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .tn-mini{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:8px 12px}
 .tn-mini span{display:block;font-size:11px;color:var(--text-2);font-weight:600}
 .tn-mini b{font-size:17px;font-weight:740;letter-spacing:-.01em}
@@ -1949,11 +1949,13 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
             return "—"
         return f"{'+' if signed and v >= 0 else ''}{v:,.2f}"
     tp = s.get("today_profit"); tl = s.get("today_loss")
-    eq = s.get("equity")
+    eq = s.get("equity"); tf = s.get("today_fees")
     stat_row = (
         '<div class="tn-stats">'
         f'<div class="tn-mini"><span>Today profit</span><b class="pos">+{_money(tp)}</b></div>'
         f'<div class="tn-mini"><span>Today loss</span><b class="neg">{_money(tl)}</b></div>'
+        f'<div class="tn-mini"><span>Fees today (taker)</span><b class="neg">'
+        f'{"-" if isinstance(tf,(int,float)) and tf>0 else ""}{_money(tf)}</b></div>'
         f'<div class="tn-mini"><span>Net today</span><b class="{"pos" if (s.get("today_net") or 0)>=0 else "neg"}">'
         f'{_money(s.get("today_net"), True)}</b></div>'
         f'<div class="tn-mini"><span>Total asset (equity)</span><b>${_money(eq)}</b></div>'
@@ -1983,13 +1985,19 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     ) or '<li class="muted">no activity yet</li>'
 
     hist = s.get("history") or []
+    def _fee_cell(h):
+        fee = h.get("fee")
+        if not isinstance(fee, (int, float)):
+            return '<td class="muted">taker</td>'
+        return f'<td class="muted">-{fee:.4f} · taker</td>'
     hist_rows = "".join(
         f"<tr><td class=\"muted\">{_esc(h.get('time',''))}</td>"
         f"<td>{_esc(h.get('symbol',''))}</td>"
         f"<td class=\"{'pos' if h.get('win') else 'neg'}\">"
-        f"{'+' if h.get('pnl',0)>=0 else ''}{float(h.get('pnl',0)):.2f} USDT</td></tr>"
+        f"{'+' if h.get('pnl',0)>=0 else ''}{float(h.get('pnl',0)):.2f} USDT</td>"
+        f"{_fee_cell(h)}</tr>"
         for h in hist[:12]
-    ) or '<tr><td colspan="3" class="muted">no closed trades yet</td></tr>'
+    ) or '<tr><td colspan="4" class="muted">no closed trades yet</td></tr>'
     rt = s.get("realized_total")
     wins = sum(1 for h in hist if h.get("win"))
     hist_summary = ""
@@ -2027,7 +2035,7 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
   <div class="tn-hist">
     <div class="tn-sub" style="margin-top:14px">Trade history (closed) &nbsp; {hist_summary}</div>
     <div class="lab-tablewrap"><table class="lab-table"><thead><tr>
-      <th>Closed</th><th>Pair</th><th>Realized P&amp;L</th>
+      <th>Closed</th><th>Pair</th><th>Realized P&amp;L</th><th>Fee</th>
     </tr></thead><tbody>{hist_rows}</tbody></table></div>
   </div>
   <p class="muted" style="margin:10px 0 0;font-size:11.5px">Fake-money simulation on the
