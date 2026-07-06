@@ -10,8 +10,13 @@ WorkingDirectory=/home/info/preduct-bot
 # Reads .env from WorkingDirectory via python-dotenv (BINANCE_TESTNET_API_KEY /
 # BINANCE_TESTNET_API_SECRET). With no keys it safely runs in dry-run and still
 # publishes reports/testnet_bot.json for the dashboard.
+# Tune trading behaviour here, then: sudo systemctl daemon-reload &&
+# sudo systemctl restart preduct-testnet
+#   --trail-pct            trailing callback %% (smaller = lock profit faster, min 0.1)
+#   --trail-activation-pct profit %% before trailing starts (smaller = sooner)
 ExecStart=/home/info/preduct-bot/.venv/bin/python trade_testnet.py \
-  --live-testnet --loop --timeframe 15m --notional 100 --leverage 5
+  --live-testnet --loop --timeframe 15m --notional 100 --leverage 5 \
+  --sl-pct 0.5 --trail-pct 0.2 --trail-activation-pct 0.1
 Restart=always
 RestartSec=15
 

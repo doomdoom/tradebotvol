@@ -190,10 +190,10 @@ def main() -> int:
     parser.add_argument("--notional", type=float, default=100.0)
     parser.add_argument("--leverage", type=int, default=5)
     parser.add_argument("--sl-pct", type=float, default=0.5, help="protective stop-loss %%")
-    parser.add_argument("--trail-pct", type=float, default=0.3,
-                        help="trailing-stop callback %% (books profit on a pullback)")
-    parser.add_argument("--trail-activation-pct", type=float, default=0.15,
-                        help="profit %% reached before the trailing stop starts")
+    parser.add_argument("--trail-pct", type=float, default=0.2,
+                        help="trailing-stop callback %% (smaller = locks profit faster; min 0.1)")
+    parser.add_argument("--trail-activation-pct", type=float, default=0.1,
+                        help="profit %% reached before the trailing stop starts (smaller = sooner)")
     parser.add_argument("--live-testnet", action="store_true")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--state-file", default="reports/testnet_bot.json")
