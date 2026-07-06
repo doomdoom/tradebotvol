@@ -65,13 +65,16 @@ def _round_step(qty: float, precision: int, step: float | None) -> float:
     return round(qty, precision)
 
 
-def _tp_sl_prices(entry: float, side: str, tp_pct: float, sl_pct: float,
-                  price_precision: int) -> tuple[float, float]:
+def _exit_prices(entry: float, side: str, sl_pct: float, act_pct: float,
+                 price_precision: int) -> tuple[float, float]:
+    """Return (stop_loss_price, trailing_activation_price). For a long the stop
+    is below entry and trailing activates above it (once in profit); mirrored
+    for a short."""
     if side == "BUY":
-        return (round(entry * (1 + tp_pct / 100.0), price_precision),
-                round(entry * (1 - sl_pct / 100.0), price_precision))
-    return (round(entry * (1 - tp_pct / 100.0), price_precision),
-            round(entry * (1 + sl_pct / 100.0), price_precision))
+        return (round(entry * (1 - sl_pct / 100.0), price_precision),
+                round(entry * (1 + act_pct / 100.0), price_precision))
+    return (round(entry * (1 + sl_pct / 100.0), price_precision),
+            round(entry * (1 - act_pct / 100.0), price_precision))
 
 
 def _decide(engine: PredictionEngine, symbol: str, timeframe: str):
@@ -107,10 +110,10 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list, off:
 
     if client is None:  # dry-run
         qty = args.notional / entry if entry else 0.0
-        tp, sl = _tp_sl_prices(entry, side, args.tp_pct, args.sl_pct, 2)
+        sl, act = _exit_prices(entry, side, args.sl_pct, args.trail_activation_pct, 2)
         msg = (f"would {side} ~{qty:.6f} (~${args.notional:.0f}) @ ~{entry:.2f} · "
-               f"TP {tp:.2f} SL {sl:.2f} · {result.market_regime.lower()} · "
-               f"conf {result.confidence*100:.0f}%")
+               f"SL {sl:.2f} · trail {args.trail_pct}% after +{args.trail_activation_pct}% · "
+               f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
         log.info("[DRY] %s: %s", tag, msg)
         _record(recent, symbol, "would_trade", msg, off)
         return
@@ -128,13 +131,15 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list, off:
     if qty <= 0:
         _record(recent, symbol, "skip", "notional too small for min qty", off)
         return
-    tp, sl = _tp_sl_prices(price, side, args.tp_pct, args.sl_pct, f["price_precision"])
+    sl, act = _exit_prices(price, side, args.sl_pct, args.trail_activation_pct, f["price_precision"])
     try:
+        client.cancel_all(symbol)  # clear any orphaned orders from a prior close
         client.set_leverage(symbol, args.leverage)
         client.market_order(symbol, side, qty)
-        client.close_trigger(symbol, close_side, tp, "take_profit")
-        client.close_trigger(symbol, close_side, sl, "stop")
-        msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · TP {tp:.2f} SL {sl:.2f} · "
+        client.close_trigger(symbol, close_side, sl, "stop")            # protective stop
+        client.trailing_stop(symbol, close_side, qty, args.trail_pct, act)  # books profit
+        msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · SL {sl:.2f} · "
+               f"trailing {args.trail_pct}% (from {act:.2f}) · "
                f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
         log.info("TESTNET %s: %s", tag, msg)
         _record(recent, symbol, "open", msg, off)
@@ -166,7 +171,8 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "tz": display_tz_label(off),
         "mode": "live-testnet" if client is not None else "dry-run",
         "timeframe": args.timeframe, "notional": args.notional,
-        "leverage": args.leverage, "tp_pct": args.tp_pct, "sl_pct": args.sl_pct,
+        "leverage": args.leverage, "sl_pct": args.sl_pct,
+        "trail_pct": args.trail_pct, "trail_activation_pct": args.trail_activation_pct,
         "symbols": config.symbols, "balance": balance,
         "positions": positions, "recent": list(reversed(recent)),
     }
@@ -183,8 +189,11 @@ def main() -> int:
     parser.add_argument("--timeframe", default="15m")
     parser.add_argument("--notional", type=float, default=100.0)
     parser.add_argument("--leverage", type=int, default=5)
-    parser.add_argument("--tp-pct", type=float, default=0.6)
-    parser.add_argument("--sl-pct", type=float, default=0.4)
+    parser.add_argument("--sl-pct", type=float, default=0.5, help="protective stop-loss %%")
+    parser.add_argument("--trail-pct", type=float, default=0.3,
+                        help="trailing-stop callback %% (books profit on a pullback)")
+    parser.add_argument("--trail-activation-pct", type=float, default=0.15,
+                        help="profit %% reached before the trailing stop starts")
     parser.add_argument("--live-testnet", action="store_true")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--state-file", default="reports/testnet_bot.json")

@@ -168,5 +168,21 @@ class BinanceTestnetClient:
             "stopPrice": stop_price, "closePosition": "true", "workingType": "MARK_PRICE",
         })
 
+    def trailing_stop(self, symbol: str, side: str, quantity: float,
+                      callback_rate: float, activation_price: float | None = None) -> dict:
+        """Trailing-stop that books profit: it follows the price in your favour
+        and closes when price retraces by ``callback_rate`` percent from its best.
+        ``side`` is the closing side (SELL to close a long, BUY to close a short).
+        ``activation_price`` (optional) is where trailing starts."""
+        params: dict = {
+            "symbol": symbol.upper(), "side": side.upper(),
+            "type": "TRAILING_STOP_MARKET", "quantity": quantity,
+            "callbackRate": round(max(0.1, min(callback_rate, 5.0)), 1),
+            "reduceOnly": "true", "workingType": "MARK_PRICE",
+        }
+        if activation_price is not None:
+            params["activationPrice"] = activation_price
+        return self._signed("POST", "/fapi/v1/order", params)
+
     def cancel_all(self, symbol: str) -> dict:
         return self._signed("DELETE", "/fapi/v1/allOpenOrders", {"symbol": symbol.upper()})
