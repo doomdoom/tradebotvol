@@ -72,6 +72,7 @@ class Config:
     enable_no_signal_mode: bool = False
     min_confidence_for_signal: float = 0.55
     min_signal_edge: float = 0.05
+    wait_in_choppy: bool = True
     # Optional API credentials (NOT required for public market data).
     api_key: str = ""
     api_secret: str = ""

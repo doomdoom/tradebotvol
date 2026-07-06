@@ -20,6 +20,7 @@ import time
 
 import pandas as pd
 
+from predictor.backtest_metrics import WAIT
 from predictor.binance_data import BinanceDataClient
 from predictor.config import Config, load_config
 from predictor.logger import get_logger, setup_logging
@@ -139,6 +140,13 @@ class LiveRunner:
                 return
             self._resolve_pending(pair, candles)
             result = self.engine.predict(symbol, timeframe, candles)
+            if result.predicted_direction == WAIT:
+                # NO-SIGNAL mode declined this setup (weak edge / choppy market).
+                # Stay silent rather than log a low-quality guess, so the recorded
+                # accuracy reflects only real, committed calls.
+                self._pending.pop(pair, None)
+                self._print_no_signal(result)
+                return
             row_id = (
                 self.storage.save_prediction(result)
                 if (self.storage is not None and self.config.save_predictions)
@@ -179,6 +187,17 @@ class LiveRunner:
         self._print_resolution(pair, prediction, actual_direction, actual_return_pct, correct)
 
     # ------------------------------------------------------------------ #
+
+    def _print_no_signal(self, r: PredictionResult) -> None:
+        off = self.config.display_utc_offset_hours
+        tz = display_tz_label(off)
+        stamp = to_display_time(utc_now(), off)
+        print(
+            f"\n[{stamp} {tz}] {r.symbol} {r.timeframe}: NO CLEAR EDGE - "
+            f"holding off ({r.market_regime.lower()} regime, "
+            f"confidence {r.confidence * 100:.0f}%). No prediction logged.",
+            flush=True,
+        )
 
     def _print_prediction(self, r: PredictionResult) -> None:
         off = self.config.display_utc_offset_hours

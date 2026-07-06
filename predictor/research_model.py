@@ -53,6 +53,7 @@ class EnhancedConfig:
     no_signal_mode: bool = False
     min_confidence_for_signal: float = 0.55
     min_signal_edge: float = 0.05             # |p_up - p_down| floor
+    wait_in_choppy: bool = True               # decline choppy/sideways conditions
     # Signal-strength thresholds (on adjusted confidence)
     medium_confidence: float = 0.55
     strong_confidence: float = 0.65
@@ -167,7 +168,12 @@ class EnhancedModel:
         meets = adj_conf >= cfg.min_confidence_for_signal
         final_dir = direction.copy()
         if cfg.no_signal_mode:
+            from .regime import CHOPPY, SIDEWAYS
+
             weak = (adj_conf < cfg.min_confidence_for_signal) | (edge < cfg.min_signal_edge)
+            if cfg.wait_in_choppy:
+                bad_regime = withreg["regime"].isin([CHOPPY, SIDEWAYS]).to_numpy()
+                weak = weak | bad_regime
             final_dir = np.where(weak, WAIT, direction)
 
         strengths = [_signal_strength(float(c), cfg) for c in adj_conf]
@@ -234,6 +240,7 @@ def config_to_enhanced(config) -> EnhancedConfig:
         no_signal_mode=g("enable_no_signal_mode", False),
         min_confidence_for_signal=g("min_confidence_for_signal", 0.55),
         min_signal_edge=g("min_signal_edge", 0.05),
+        wait_in_choppy=g("wait_in_choppy", True),
         regime_thresholds=RegimeThresholds(
             high_vol_mult=g("regime_high_vol_mult", 1.6),
             low_vol_mult=g("regime_low_vol_mult", 0.6),
