@@ -912,6 +912,7 @@ def _hero() -> str:
       <div>
         <div class="hero-verdict" id="hero-verdict">Waiting for data…</div>
         <div class="hero-meta muted" id="hero-meta">—</div>
+        <div class="hero-oc" id="hero-oc"></div>
         <div class="hero-tags" id="hero-tags"></div>
         <div class="hero-warn" id="hero-warn" hidden></div>
         <div class="hero-status" id="hero-status"></div>
@@ -1382,7 +1383,9 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .hero-verdict{font-size:20px;font-weight:760;letter-spacing:-.01em;line-height:1.2}
 .hero-call[data-dir=up] .hero-verdict{color:var(--good)}
 .hero-call[data-dir=down] .hero-verdict{color:var(--bad)}
-.hero-meta{font-size:12.5px;margin:3px 0 8px}
+.hero-meta{font-size:12.5px;margin:3px 0 6px}
+.hero-oc{font-size:13px;font-weight:600;margin:0 0 8px;color:var(--text-1);
+  font-variant-numeric:tabular-nums}
 .hero-tags{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
 .tag{font-size:11px;font-weight:650;padding:2px 8px;border-radius:999px;
   background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
@@ -1581,6 +1584,7 @@ _JS = """
       setTxt('hero-meta',selCoin?(selCoin+' · '+selTf):''); setTxt('hero-target','—');
       var s0=document.getElementById('hero-status'); if(s0&&s0.innerHTML!=='')s0.innerHTML='';
       var t0=document.getElementById('hero-tags'); if(t0&&t0.innerHTML!=='')t0.innerHTML='';
+      var oc0=document.getElementById('hero-oc'); if(oc0&&oc0.textContent!=='')oc0.textContent='';
       var w0=document.getElementById('hero-warn'); if(w0)w0.hidden=true;
       setTxt('f-conf','—'); setTxt('f-exp','—'); setTxt('f-last','—'); setTxt('pb-key','—');
       setW('pb-up',0); setW('pb-neu',0); setW('pb-down',0); return;
@@ -1588,9 +1592,19 @@ _JS = """
     var isWait=(p.dir==='wait');
     setAttr(call,'data-dir',isWait?'flat':p.up?'up':p.down?'down':'flat');
     setTxt('hero-arrow',isWait?'•':p.up?'▲':p.down?'▼':'■');
-    setTxt('hero-verdict',isWait?'No clear edge — waiting':p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT');
+    setTxt('hero-verdict',isWait?'No clear edge — waiting':p.up?'🟢 UP candle':p.down?'🔴 DOWN candle':'⚪ Flat candle');
     setTxt('hero-meta',selCoin+' · '+selTf+' · '+Math.round(p.conf*100)+'% '+(p.conf_label||''));
     setTxt('hero-target',p.target||'—');
+    // plain-English opens -> closes line
+    var oc=document.getElementById('hero-oc');
+    if(oc){
+      var t='';
+      if(!isWait && p.ref){
+        t='Opens ~'+fmtPrice(p.ref);
+        if(p.exp_low!=null) t+='  →  closes ~'+fmtPrice(p.exp_low)+'–'+fmtPrice(p.exp_high);
+      }
+      if(oc.textContent!==t) oc.textContent=t;
+    }
     // regime / signal-strength / model-version tags
     var tags=document.getElementById('hero-tags');
     if(tags){ var chips='';
