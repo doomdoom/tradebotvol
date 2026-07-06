@@ -5,7 +5,7 @@
   "market_type": "futures",
   "candle_limit": 1000,
   "neutral_threshold_pct": 0.015,
-  "min_confidence": 0.50,
+  "min_confidence": 0.42,
   "use_higher_timeframe_context": true,
   "higher_timeframe_count": 2,
   "model_type": "random_forest",
@@ -39,7 +39,7 @@
   "regime_low_vol_mult": 0.6,
 
   "enable_no_signal_mode": true,
-  "min_confidence_for_signal": 0.50,
-  "min_signal_edge": 0.04,
+  "min_confidence_for_signal": 0.42,
+  "min_signal_edge": 0.03,
   "wait_in_choppy": true
 }
