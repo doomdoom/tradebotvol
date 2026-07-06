@@ -1963,10 +1963,12 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     pos_rows = "".join(
         f"<tr><td>{_esc(p['symbol'])}</td>"
         f"<td>{'▲ ' if p['side']=='LONG' else '▼ '}{p['side']}</td>"
-        f"<td>{p['amount']}</td><td>{p['entry']:,.2f}</td>"
+        f"<td>${p.get('value_usdt', abs(p['amount'])*p['entry']):,.2f}</td>"
+        f"<td class=\"muted\">${p.get('margin_usdt', 0):,.2f}</td>"
+        f"<td>{p['entry']:,.2f}</td>"
         f"<td class=\"{'pos' if p['unrealized']>=0 else 'neg'}\">{p['unrealized']:+.2f}</td></tr>"
         for p in s.get("positions", [])
-    ) or '<tr><td colspan="5" class="muted">no open positions</td></tr>'
+    ) or '<tr><td colspan="6" class="muted">no open positions</td></tr>'
 
     ev_class = {"open": "badge-good", "would_trade": "badge-neutral", "hold": "badge-warn",
                 "no_trade": "badge-neutral", "error": "badge-bad", "skip": "badge-neutral",
@@ -2013,7 +2015,7 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     <div>
       <div class="tn-sub">Open positions</div>
       <div class="lab-tablewrap"><table class="lab-table"><thead><tr>
-        <th>Pair</th><th>Side</th><th>Size</th><th>Entry</th><th>uPnL</th>
+        <th>Pair</th><th>Side</th><th>Size (USDT)</th><th>Margin</th><th>Entry</th><th>uPnL</th>
       </tr></thead><tbody>{pos_rows}</tbody></table></div>
     </div>
     <div>

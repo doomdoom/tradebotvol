@@ -279,6 +279,11 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
                         "symbol": s,
                         "side": "LONG" if p["amount"] > 0 else "SHORT",
                         "amount": round(p["amount"], 6),
+                        # Position value in USDT (the leveraged notional) and the
+                        # margin actually put up (notional / leverage).
+                        "value_usdt": round(abs(p["amount"]) * p["entry"], 2),
+                        "margin_usdt": round(abs(p["amount"]) * p["entry"]
+                                             / max(p.get("leverage") or args.leverage, 1), 2),
                         "entry": round(p["entry"], 2),
                         "unrealized": round(p["unrealized"], 2),
                     })
