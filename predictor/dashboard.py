@@ -1406,6 +1406,17 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .lab-table th,.lab-table td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)}
 .lab-table th{color:var(--text-2);font-weight:650}
 @media(max-width:820px){.lab-cards{grid-template-columns:1fr}}
+.tn-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.tn-bal{font-size:20px;font-weight:770;letter-spacing:-.02em;margin-top:4px}
+.tn-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tn-sub{font-size:12px;font-weight:650;color:var(--text-2);margin-bottom:6px}
+.tn-acts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;
+  max-height:230px;overflow-y:auto;font-size:12px}
+.tn-acts li{line-height:1.5}
+.tn-t{font-variant-numeric:tabular-nums;margin-right:2px}
+.lab-table td.pos{color:var(--good);font-weight:650}
+.lab-table td.neg{color:var(--bad);font-weight:650}
+@media(max-width:820px){.tn-grid{grid-template-columns:1fr}.tn-head{flex-direction:column}}
 .hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
   border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
 .fact-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2);margin-bottom:2px}
@@ -1854,6 +1865,78 @@ def _accuracy_lab(reports_dir: str = "reports") -> str:
 </section>"""
 
 
+def _testnet_panel(reports_dir: str = "reports") -> str:
+    """Display the TESTNET trading bot's status (fake money). Reads
+    reports/testnet_bot.json written by trade_testnet.py. Read-only; shows
+    nothing that can place or affect a real trade."""
+    path = Path(reports_dir) / "testnet_bot.json"
+    if not path.exists():
+        return (
+            '<section class="card" id="sec-testnet"><div class="hero-kicker">'
+            'TESTNET TRADING BOT</div><p class="muted" style="margin:8px 0 0">'
+            'Not started yet. This will show a paper/testnet bot trading with '
+            '<b>fake money</b> once it is running on the server.</p></section>'
+        )
+    try:
+        s = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ('<section class="card" id="sec-testnet"><div class="hero-kicker">'
+                'TESTNET TRADING BOT</div><p class="muted">status unavailable</p></section>')
+
+    mode = str(s.get("mode", "dry-run"))
+    mode_badge = ('<span class="badge badge-good">live testnet</span>' if mode == "live-testnet"
+                  else '<span class="badge badge-warn">dry-run (preview)</span>')
+    bal = s.get("balance")
+    bal_txt = f"${bal:,.2f}" if isinstance(bal, (int, float)) else "—"
+
+    pos_rows = "".join(
+        f"<tr><td>{_esc(p['symbol'])}</td>"
+        f"<td>{'▲ ' if p['side']=='LONG' else '▼ '}{p['side']}</td>"
+        f"<td>{p['amount']}</td><td>{p['entry']:,.2f}</td>"
+        f"<td class=\"{'pos' if p['unrealized']>=0 else 'neg'}\">{p['unrealized']:+.2f}</td></tr>"
+        for p in s.get("positions", [])
+    ) or '<tr><td colspan="5" class="muted">no open positions</td></tr>'
+
+    ev_class = {"open": "badge-good", "would_trade": "badge-neutral", "hold": "badge-warn",
+                "no_trade": "badge-neutral", "error": "badge-bad", "skip": "badge-neutral"}
+    acts = "".join(
+        f'<li><span class="tn-t muted">{_esc(a.get("time",""))}</span> '
+        f'<span class="badge {ev_class.get(a.get("event"),"badge-neutral")}">'
+        f'{_esc(str(a.get("event","")).replace("_"," "))}</span> '
+        f'<b>{_esc(a.get("symbol",""))}</b> '
+        f'<span class="muted">{_esc(a.get("text",""))}</span></li>'
+        for a in (s.get("recent") or [])[:12]
+    ) or '<li class="muted">no activity yet</li>'
+
+    return f"""
+<section class="card" id="sec-testnet" aria-label="Testnet trading bot">
+  <div class="tn-head">
+    <div><div class="hero-kicker">TESTNET TRADING BOT · FAKE MONEY</div>
+      <div class="muted" style="font-size:12px;margin-top:4px">
+        {_esc(s.get('timeframe','?'))} · ${float(s.get('notional',0)):.0f}/trade ·
+        {int(s.get('leverage',0))}x · TP {float(s.get('tp_pct',0))}% / SL {float(s.get('sl_pct',0))}% ·
+        updated {_esc(s.get('updated_display',''))} {_esc(s.get('tz',''))}</div></div>
+    <div style="text-align:right">{mode_badge}
+      <div class="tn-bal">{bal_txt}<span class="muted"> fake USDT</span></div></div>
+  </div>
+  <div class="tn-grid">
+    <div>
+      <div class="tn-sub">Open positions</div>
+      <div class="lab-tablewrap"><table class="lab-table"><thead><tr>
+        <th>Pair</th><th>Side</th><th>Size</th><th>Entry</th><th>uPnL</th>
+      </tr></thead><tbody>{pos_rows}</tbody></table></div>
+    </div>
+    <div>
+      <div class="tn-sub">Recent activity</div>
+      <ul class="tn-acts">{acts}</ul>
+    </div>
+  </div>
+  <p class="muted" style="margin:10px 0 0;font-size:11.5px">Fake-money simulation on the
+  Binance testnet. No real funds, no real orders. Not financial advice; this does not predict
+  or guarantee real profit.</p>
+</section>"""
+
+
 def build_dashboard_html(
     storage: PredictionStorage,
     refresh_seconds: int | None = None,
@@ -1909,6 +1992,7 @@ def build_dashboard_html(
     {_verdict(resolved, report)}
     {_validation_health(all_df, resolved, report)}
     {_accuracy_lab()}
+    {_testnet_panel()}
     {_rankings(report)}
     {_coin_accordion(coins, offset_hours)}
     {_recent_log(all_df, offset_hours)}

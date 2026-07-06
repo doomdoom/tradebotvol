@@ -24,3 +24,10 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Runtime artifacts from the trading tools (regenerated at runtime)
+reports/testnet_bot.json
+reports/paper_trade.json
+reports/paper_trade.md
+reports/research_report.json
+reports/research_report.md

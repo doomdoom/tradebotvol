@@ -1,0 +1,19 @@
+[Unit]
+Description=Preduct bot - TESTNET trading (FAKE MONEY, no real funds)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=info
+WorkingDirectory=/home/info/preduct-bot
+# Reads .env from WorkingDirectory via python-dotenv (BINANCE_TESTNET_API_KEY /
+# BINANCE_TESTNET_API_SECRET). With no keys it safely runs in dry-run and still
+# publishes reports/testnet_bot.json for the dashboard.
+ExecStart=/home/info/preduct-bot/.venv/bin/python trade_testnet.py \
+  --live-testnet --loop --timeframe 15m --notional 100 --leverage 5
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
