@@ -132,17 +132,22 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
     if qty <= 0:
         _record(recent, symbol, "skip", "notional too small for min qty", off)
         return
-    sl, _act = _exit_prices(price, side, args.sl_pct, args.trail_activation_pct, f["price_precision"])
+    pp = f["price_precision"]
     try:
         client.cancel_all(symbol)  # clear any orphaned orders from a prior close
         client.set_leverage(symbol, args.leverage)
         client.market_order(symbol, side, qty)
-        # Stop-loss + trailing + take-profit are all handled client-side by
-        # _manage_positions (this testnet rejects conditional order types), so
-        # we only remember the position and its stop level here.
-        trails[symbol] = {"close_side": close_side, "entry": price, "stop": sl,
-                          "peak": price, "pp": f["price_precision"], "qty": qty}
-        msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · stop {sl:.2f} · "
+        # Use the ACTUAL fill price (after slippage), not the pre-order price, so
+        # the stop / break-even are correct. Stop-loss + trailing are handled
+        # client-side by _manage_positions (this testnet rejects conditional
+        # order types), so we only remember the position + its stop level here.
+        opened = client.position(symbol)
+        entry = float(opened["entry"]) if opened.get("entry") else price
+        sl = round(entry * (1 - args.sl_pct / 100.0) if side == "BUY"
+                   else entry * (1 + args.sl_pct / 100.0), pp)
+        trails[symbol] = {"close_side": close_side, "entry": entry, "stop": sl,
+                          "peak": entry, "pp": pp, "qty": qty}
+        msg = (f"opened {side} {qty:.6f} @ {entry:.2f} · stop {sl:.2f} · "
                f"trailing {args.trail_pct}% (locks from +{args.trail_activation_pct}%) · "
                f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
         log.info("TESTNET %s: %s", tag, msg)
@@ -176,8 +181,13 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
             continue
         long = pos["amount"] > 0
         close_side = "SELL" if long else "BUY"
-        pp = filters.get(symbol, {}).get("price_precision", 2)
-        qty = abs(pos["amount"])
+        fdict = filters.get(symbol, {"qty_precision": 3, "price_precision": 2})
+        pp = fdict.get("price_precision", 2)
+        # Round to the symbol's quantity precision so the reduce-only market
+        # close is accepted (a raw float can trip Binance precision error -1111).
+        qty = round(abs(pos["amount"]), fdict.get("qty_precision", 3))
+        if qty <= 0:
+            continue
         t = trails.get(symbol)
         if t is None:  # adopt a position opened before this run (e.g. after restart)
             entry0 = pos["entry"]
