@@ -204,6 +204,8 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
 
 def _write_state(path: Path, args, client, config, recent: list, off: float) -> None:
     positions = []
+    history: list = []
+    realized_total = None
     balance = None
     if client is not None:
         try:
@@ -220,6 +222,20 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
                     })
         except Exception as exc:
             log.warning("state: could not read testnet account: %s", exc)
+        try:
+            rows = client.income(income_type="REALIZED_PNL", limit=100)
+            rows.sort(key=lambda r: int(r.get("time", 0)), reverse=True)
+            realized_total = round(sum(float(r.get("income", 0)) for r in rows), 2)
+            for r in rows[:15]:
+                pnl = round(float(r.get("income", 0)), 2)
+                history.append({
+                    "time": to_display_time(int(r.get("time", 0)), off),
+                    "symbol": str(r.get("symbol", "")),
+                    "pnl": pnl,
+                    "win": pnl >= 0,
+                })
+        except Exception as exc:
+            log.warning("state: could not read trade history: %s", exc)
     state = {
         "updated_display": to_display_time(utc_now(), off),
         "tz": display_tz_label(off),
@@ -229,6 +245,7 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "trail_pct": args.trail_pct, "trail_activation_pct": args.trail_activation_pct,
         "symbols": config.symbols, "balance": balance,
         "positions": positions, "recent": list(reversed(recent)),
+        "history": history, "realized_total": realized_total,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

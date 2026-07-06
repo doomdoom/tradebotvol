@@ -1417,8 +1417,9 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
   max-height:230px;overflow-y:auto;font-size:12px}
 .tn-acts li{line-height:1.5}
 .tn-t{font-variant-numeric:tabular-nums;margin-right:2px}
-.lab-table td.pos{color:var(--good);font-weight:650}
-.lab-table td.neg{color:var(--bad);font-weight:650}
+.lab-table td.pos,b.pos{color:var(--good);font-weight:650}
+.lab-table td.neg,b.neg{color:var(--bad);font-weight:650}
+.tn-hist .lab-table{max-height:230px}
 @media(max-width:820px){.tn-grid{grid-template-columns:1fr}.tn-head{flex-direction:column}}
 .hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
   border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
@@ -1922,6 +1923,23 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
         for a in (s.get("recent") or [])[:12]
     ) or '<li class="muted">no activity yet</li>'
 
+    hist = s.get("history") or []
+    hist_rows = "".join(
+        f"<tr><td class=\"muted\">{_esc(h.get('time',''))}</td>"
+        f"<td>{_esc(h.get('symbol',''))}</td>"
+        f"<td class=\"{'pos' if h.get('win') else 'neg'}\">"
+        f"{'+' if h.get('pnl',0)>=0 else ''}{float(h.get('pnl',0)):.2f} USDT</td></tr>"
+        for h in hist[:12]
+    ) or '<tr><td colspan="3" class="muted">no closed trades yet</td></tr>'
+    rt = s.get("realized_total")
+    wins = sum(1 for h in hist if h.get("win"))
+    hist_summary = ""
+    if hist:
+        hist_summary = (f'<span class="muted">{len(hist)} closed · {wins} win / '
+                        f'{len(hist)-wins} loss · net </span>'
+                        f'<b class="{"pos" if (rt or 0)>=0 else "neg"}">'
+                        f'{"+" if (rt or 0)>=0 else ""}{float(rt or 0):.2f} USDT</b>')
+
     return f"""
 <section class="card" id="sec-testnet" aria-label="Testnet trading bot">
   <div class="tn-head">
@@ -1944,6 +1962,12 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
       <div class="tn-sub">Recent activity</div>
       <ul class="tn-acts">{acts}</ul>
     </div>
+  </div>
+  <div class="tn-hist">
+    <div class="tn-sub" style="margin-top:14px">Trade history (closed) &nbsp; {hist_summary}</div>
+    <div class="lab-tablewrap"><table class="lab-table"><thead><tr>
+      <th>Closed</th><th>Pair</th><th>Realized P&amp;L</th>
+    </tr></thead><tbody>{hist_rows}</tbody></table></div>
   </div>
   <p class="muted" style="margin:10px 0 0;font-size:11.5px">Fake-money simulation on the
   Binance testnet. No real funds, no real orders. Not financial advice; this does not predict

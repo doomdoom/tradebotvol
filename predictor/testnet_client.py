@@ -168,6 +168,18 @@ class BinanceTestnetClient:
             "stopPrice": stop_price, "closePosition": "true", "workingType": "MARK_PRICE",
         })
 
+    def income(self, income_type: str | None = None, symbol: str | None = None,
+               limit: int = 100) -> list:
+        """Account income history (realized P&L, commission, funding). Used to
+        build the closed-trade history: filter income_type='REALIZED_PNL'."""
+        params: dict = {"limit": min(int(limit), 1000)}
+        if income_type:
+            params["incomeType"] = income_type
+        if symbol:
+            params["symbol"] = symbol.upper()
+        result = self._signed("GET", "/fapi/v1/income", params)
+        return result if isinstance(result, list) else []
+
     def trailing_stop(self, symbol: str, side: str, quantity: float,
                       callback_rate: float, activation_price: float | None = None) -> dict:
         """Trailing-stop that books profit: it follows the price in your favour
