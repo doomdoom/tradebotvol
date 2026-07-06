@@ -287,6 +287,17 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         # Total asset = wallet balance + unrealized P&L of open positions.
         if balance is not None:
             equity = round(balance + sum(p["unrealized"] for p in positions), 2)
+
+    # Live status so the user can see the bot is working even when it's idle.
+    next_check = to_display_time(
+        current_candle_close_ms(utc_now_ms(), args.timeframe), off, with_date=False)
+    trading = len(positions) > 0
+    if trading:
+        status_text = (f"In {len(positions)} open trade"
+                       f"{'s' if len(positions) != 1 else ''} — trailing to lock profit")
+    else:
+        status_text = (f"Waiting for a signal — scanning {', '.join(config.symbols)} "
+                       f"live, deciding on each {args.timeframe} candle close")
     state = {
         "updated_display": to_display_time(utc_now(), off),
         "tz": display_tz_label(off),
@@ -295,6 +306,8 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "leverage": args.leverage, "sl_pct": args.sl_pct,
         "trail_pct": args.trail_pct, "trail_activation_pct": args.trail_activation_pct,
         "symbols": config.symbols, "balance": balance, "equity": equity,
+        "status": "trading" if len(positions) > 0 else "waiting",
+        "status_text": status_text, "next_check": next_check,
         "today_profit": today_profit, "today_loss": today_loss,
         "today_net": round(today_profit + today_loss, 2),
         "positions": positions, "recent": list(reversed(recent)),

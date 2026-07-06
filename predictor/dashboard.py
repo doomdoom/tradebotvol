@@ -1425,6 +1425,14 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .tn-mini span{display:block;font-size:11px;color:var(--text-2);font-weight:600}
 .tn-mini b{font-size:17px;font-weight:740;letter-spacing:-.01em}
 @media(max-width:820px){.tn-stats{grid-template-columns:repeat(2,1fr)}}
+.tn-status{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;
+  padding:8px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
+.tn-status.tn-waiting{background:#eef4ff;color:#2456b8;border-color:#d4e2fb}
+.tn-status.tn-trading{background:#e7f6ec;color:#15803d;border-color:#bfe6cd}
+.tn-status b{font-weight:740}
+.tn-live-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 8px;
+  animation:tnpulse 1.5s infinite}
+@keyframes tnpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
 @media(max-width:820px){.tn-grid{grid-template-columns:1fr}.tn-head{flex-direction:column}}
 .hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
   border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
@@ -1926,6 +1934,16 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     bal = s.get("balance")
     bal_txt = f"${bal:,.2f}" if isinstance(bal, (int, float)) else "—"
 
+    status = str(s.get("status", ""))
+    status_txt = str(s.get("status_text", ""))
+    nxt = str(s.get("next_check", ""))
+    status_banner = ""
+    if status_txt:
+        icon = "✓" if status == "trading" else "⏳"
+        extra = f' · next check <b>{_esc(nxt)}</b>' if nxt and status != "trading" else ""
+        status_banner = (f'<div class="tn-status tn-{_esc(status)}">'
+                         f'<span class="tn-live-dot"></span>{icon} {_esc(status_txt)}{extra}</div>')
+
     def _money(v, signed=False):
         if not isinstance(v, (int, float)):
             return "—"
@@ -1989,6 +2007,7 @@ def _testnet_panel_inner(reports_dir: str = "reports") -> str:
     <div style="text-align:right">{mode_badge}
       <div class="tn-bal">{bal_txt}<span class="muted"> fake USDT</span></div></div>
   </div>
+  {status_banner}
   {stat_row}
   <div class="tn-grid">
     <div>
