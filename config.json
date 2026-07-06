@@ -5,7 +5,7 @@
   "market_type": "futures",
   "candle_limit": 1000,
   "neutral_threshold_pct": 0.015,
-  "min_confidence": 0.55,
+  "min_confidence": 0.50,
   "use_higher_timeframe_context": true,
   "higher_timeframe_count": 2,
   "model_type": "random_forest",
