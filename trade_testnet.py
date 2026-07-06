@@ -95,7 +95,8 @@ def _record(recent: list, symbol: str, event: str, text: str, off: float) -> Non
     del recent[:-_MAX_RECENT]
 
 
-def _trade_symbol(args, engine, client, filters, symbol: str, recent: list, off: float) -> None:
+def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
+                  off: float, trails: dict) -> None:
     side, result = _decide(engine, symbol, args.timeframe)
     tag = f"{symbol} {args.timeframe}"
     if side is None:
@@ -131,21 +132,74 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list, off:
     if qty <= 0:
         _record(recent, symbol, "skip", "notional too small for min qty", off)
         return
-    sl, act = _exit_prices(price, side, args.sl_pct, args.trail_activation_pct, f["price_precision"])
+    sl, _act = _exit_prices(price, side, args.sl_pct, args.trail_activation_pct, f["price_precision"])
     try:
         client.cancel_all(symbol)  # clear any orphaned orders from a prior close
         client.set_leverage(symbol, args.leverage)
         client.market_order(symbol, side, qty)
-        client.close_trigger(symbol, close_side, sl, "stop")            # protective stop
-        client.trailing_stop(symbol, close_side, qty, args.trail_pct, act)  # books profit
+        client.close_trigger(symbol, close_side, sl, "stop")   # protective stop-loss
+        # Trailing is handled by _manage_positions (native trailing orders are
+        # rejected on the testnet endpoint) - remember this position to trail it.
+        trails[symbol] = {"close_side": close_side, "entry": price, "stop": sl,
+                          "pp": f["price_precision"]}
         msg = (f"opened {side} {qty:.6f} @ ~{price:.2f} · SL {sl:.2f} · "
-               f"trailing {args.trail_pct}% (from {act:.2f}) · "
+               f"trailing {args.trail_pct}% (from +{args.trail_activation_pct}%) · "
                f"{result.market_regime.lower()} · conf {result.confidence*100:.0f}%")
         log.info("TESTNET %s: %s", tag, msg)
         _record(recent, symbol, "open", msg, off)
     except Exception as exc:
         log.error("%s: order failed on testnet: %s", tag, exc)
         _record(recent, symbol, "error", f"order failed: {exc}", off)
+
+
+def _manage_positions(config, client, filters, trails: dict, args, recent: list, off: float) -> None:
+    """Client-side trailing stop: as price moves in your favour, ratchet the
+    stop-loss up (long) / down (short) to lock in profit. Runs frequently so it
+    also keeps the dashboard panel fresh. Native TRAILING_STOP_MARKET is not
+    accepted on the testnet order endpoint, so we trail a STOP_MARKET ourselves.
+    """
+    for symbol in config.symbols:
+        try:
+            pos = client.position(symbol)
+        except Exception:
+            continue
+        if pos["flat"]:
+            trails.pop(symbol, None)
+            continue
+        try:
+            price = client.price(symbol)
+        except Exception:
+            continue
+        long = pos["amount"] > 0
+        close_side = "SELL" if long else "BUY"
+        pp = filters.get(symbol, {}).get("price_precision", 2)
+        t = trails.get(symbol)
+        if t is None:  # adopt a position opened before this run (e.g. after restart)
+            t = {"close_side": close_side, "entry": pos["entry"], "stop": None, "pp": pp}
+            trails[symbol] = t
+        entry = t["entry"] or pos["entry"]
+
+        # Only trail once the trade is in profit past the activation threshold.
+        act = args.trail_activation_pct / 100.0
+        in_profit = price >= entry * (1 + act) if long else price <= entry * (1 - act)
+        if not in_profit:
+            continue
+
+        trail = args.trail_pct / 100.0
+        candidate = round(price * (1 - trail), pp) if long else round(price * (1 + trail), pp)
+        cur = t["stop"]
+        improved = cur is None or (candidate > cur if long else candidate < cur)
+        if not improved:
+            continue
+        try:
+            client.cancel_all(symbol)
+            client.close_trigger(symbol, close_side, candidate, "stop")
+            t["stop"] = candidate
+            log.info("%s: trailed stop -> %.4f (price %.4f, locking profit)",
+                     symbol, candidate, price)
+            _record(recent, symbol, "trail", f"stop moved to {candidate} (price {price:.4f})", off)
+        except Exception as exc:
+            log.warning("%s: trail update failed: %s", symbol, exc)
 
 
 def _write_state(path: Path, args, client, config, recent: list, off: float) -> None:
@@ -233,11 +287,12 @@ def main() -> int:
         engine.ensure_enhanced_models([(s, args.timeframe) for s in config.symbols])
 
     recent: list = []
+    trails: dict = {}
 
     def one_pass():
         for symbol in config.symbols:
             try:
-                _trade_symbol(args, engine, client, filters, symbol, recent, off)
+                _trade_symbol(args, engine, client, filters, symbol, recent, off, trails)
             except Exception as exc:
                 log.error("%s: cycle failed: %s", symbol, exc)
                 _record(recent, symbol, "error", str(exc)[:120], off)
@@ -247,14 +302,25 @@ def main() -> int:
         one_pass()
         return 0
 
-    log.info("Looping on %s candle closes. Ctrl-C to stop.", args.timeframe)
+    log.info("Looping on %s candle closes; trailing stops managed every 20s. Ctrl-C to stop.",
+             args.timeframe)
     next_close = current_candle_close_ms(utc_now_ms(), args.timeframe)
     one_pass()
+    last_manage = utc_now_ms()
     try:
         while True:
-            if utc_now_ms() >= next_close + 2500:
+            now = utc_now_ms()
+            if now >= next_close + 2500:
                 one_pass()
                 next_close = current_candle_close_ms(utc_now_ms(), args.timeframe)
+            # Trail open positions + refresh the dashboard panel every ~20s.
+            if client is not None and now - last_manage >= 20000:
+                try:
+                    _manage_positions(config, client, filters, trails, args, recent, off)
+                    _write_state(state_path, args, client, config, recent, off)
+                except Exception as exc:
+                    log.warning("position management tick failed: %s", exc)
+                last_manage = now
             time.sleep(1.0)
     except KeyboardInterrupt:
         log.info("Stopped.")
