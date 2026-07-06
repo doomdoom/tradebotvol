@@ -185,8 +185,14 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
         if not in_profit:
             continue
 
+        # "Always book profit": once in profit, never let the stop sit below a
+        # break-even+fees floor, so a winning trade cannot turn into a loss.
         trail = args.trail_pct / 100.0
-        candidate = round(price * (1 - trail), pp) if long else round(price * (1 + trail), pp)
+        floor = entry * (1 + act) if long else entry * (1 - act)
+        if long:
+            candidate = round(min(max(price * (1 - trail), floor), price * 0.9995), pp)
+        else:
+            candidate = round(max(min(price * (1 + trail), floor), price * 1.0005), pp)
         cur = t["stop"]
         improved = cur is None or (candidate > cur if long else candidate < cur)
         if not improved:
@@ -203,10 +209,15 @@ def _manage_positions(config, client, filters, trails: dict, args, recent: list,
 
 
 def _write_state(path: Path, args, client, config, recent: list, off: float) -> None:
+    from datetime import timedelta
+
     positions = []
     history: list = []
     realized_total = None
     balance = None
+    today_profit = today_loss = 0.0
+    equity = None
+    today = (utc_now() + timedelta(hours=off)).strftime("%Y-%m-%d")
     if client is not None:
         try:
             balance = round(client.usdt_balance(), 2)
@@ -226,16 +237,24 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
             rows = client.income(income_type="REALIZED_PNL", limit=100)
             rows.sort(key=lambda r: int(r.get("time", 0)), reverse=True)
             realized_total = round(sum(float(r.get("income", 0)) for r in rows), 2)
-            for r in rows[:15]:
+            for r in rows:
+                ts = to_display_time(int(r.get("time", 0)), off)
                 pnl = round(float(r.get("income", 0)), 2)
-                history.append({
-                    "time": to_display_time(int(r.get("time", 0)), off),
-                    "symbol": str(r.get("symbol", "")),
-                    "pnl": pnl,
-                    "win": pnl >= 0,
-                })
+                if ts.startswith(today):
+                    if pnl >= 0:
+                        today_profit += pnl
+                    else:
+                        today_loss += pnl
+                if len(history) < 15:
+                    history.append({"time": ts, "symbol": str(r.get("symbol", "")),
+                                    "pnl": pnl, "win": pnl >= 0})
+            today_profit = round(today_profit, 2)
+            today_loss = round(today_loss, 2)
         except Exception as exc:
             log.warning("state: could not read trade history: %s", exc)
+        # Total asset = wallet balance + unrealized P&L of open positions.
+        if balance is not None:
+            equity = round(balance + sum(p["unrealized"] for p in positions), 2)
     state = {
         "updated_display": to_display_time(utc_now(), off),
         "tz": display_tz_label(off),
@@ -243,7 +262,9 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         "timeframe": args.timeframe, "notional": args.notional,
         "leverage": args.leverage, "sl_pct": args.sl_pct,
         "trail_pct": args.trail_pct, "trail_activation_pct": args.trail_activation_pct,
-        "symbols": config.symbols, "balance": balance,
+        "symbols": config.symbols, "balance": balance, "equity": equity,
+        "today_profit": today_profit, "today_loss": today_loss,
+        "today_net": round(today_profit + today_loss, 2),
         "positions": positions, "recent": list(reversed(recent)),
         "history": history, "realized_total": realized_total,
     }
@@ -263,8 +284,9 @@ def main() -> int:
     parser.add_argument("--sl-pct", type=float, default=0.5, help="protective stop-loss %%")
     parser.add_argument("--trail-pct", type=float, default=0.2,
                         help="trailing-stop callback %% (smaller = locks profit faster; min 0.1)")
-    parser.add_argument("--trail-activation-pct", type=float, default=0.1,
-                        help="profit %% reached before the trailing stop starts (smaller = sooner)")
+    parser.add_argument("--trail-activation-pct", type=float, default=0.15,
+                        help="profit %% at which the stop locks to break-even+ (must exceed "
+                             "~0.12%% round-trip fees to actually book profit)")
     parser.add_argument("--live-testnet", action="store_true")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--state-file", default="reports/testnet_bot.json")

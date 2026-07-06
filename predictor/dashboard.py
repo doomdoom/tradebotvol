@@ -1420,6 +1420,11 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .lab-table td.pos,b.pos{color:var(--good);font-weight:650}
 .lab-table td.neg,b.neg{color:var(--bad);font-weight:650}
 .tn-hist .lab-table{max-height:230px}
+.tn-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.tn-mini{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:8px 12px}
+.tn-mini span{display:block;font-size:11px;color:var(--text-2);font-weight:600}
+.tn-mini b{font-size:17px;font-weight:740;letter-spacing:-.01em}
+@media(max-width:820px){.tn-stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:820px){.tn-grid{grid-template-columns:1fr}.tn-head{flex-direction:column}}
 .hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
   border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
@@ -1904,6 +1909,22 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
     bal = s.get("balance")
     bal_txt = f"${bal:,.2f}" if isinstance(bal, (int, float)) else "—"
 
+    def _money(v, signed=False):
+        if not isinstance(v, (int, float)):
+            return "—"
+        return f"{'+' if signed and v >= 0 else ''}{v:,.2f}"
+    tp = s.get("today_profit"); tl = s.get("today_loss")
+    eq = s.get("equity")
+    stat_row = (
+        '<div class="tn-stats">'
+        f'<div class="tn-mini"><span>Today profit</span><b class="pos">+{_money(tp)}</b></div>'
+        f'<div class="tn-mini"><span>Today loss</span><b class="neg">{_money(tl)}</b></div>'
+        f'<div class="tn-mini"><span>Net today</span><b class="{"pos" if (s.get("today_net") or 0)>=0 else "neg"}">'
+        f'{_money(s.get("today_net"), True)}</b></div>'
+        f'<div class="tn-mini"><span>Total asset (equity)</span><b>${_money(eq)}</b></div>'
+        '</div>'
+    ) if isinstance(bal, (int, float)) else ""
+
     pos_rows = "".join(
         f"<tr><td>{_esc(p['symbol'])}</td>"
         f"<td>{'▲ ' if p['side']=='LONG' else '▼ '}{p['side']}</td>"
@@ -1951,6 +1972,7 @@ def _testnet_panel(reports_dir: str = "reports") -> str:
     <div style="text-align:right">{mode_badge}
       <div class="tn-bal">{bal_txt}<span class="muted"> fake USDT</span></div></div>
   </div>
+  {stat_row}
   <div class="tn-grid">
     <div>
       <div class="tn-sub">Open positions</div>

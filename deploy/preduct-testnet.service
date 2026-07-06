@@ -16,7 +16,7 @@ WorkingDirectory=/home/info/preduct-bot
 #   --trail-activation-pct profit %% before trailing starts (smaller = sooner)
 ExecStart=/home/info/preduct-bot/.venv/bin/python trade_testnet.py \
   --live-testnet --loop --timeframe 15m --notional 100 --leverage 5 \
-  --sl-pct 0.5 --trail-pct 0.2 --trail-activation-pct 0.1
+  --sl-pct 0.5 --trail-pct 0.2 --trail-activation-pct 0.15
 Restart=always
 RestartSec=15
 
