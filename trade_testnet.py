@@ -126,7 +126,7 @@ def _trade_symbol(args, engine, client, filters, symbol: str, recent: list,
     regime = regime_label(result.market_regime)
     if side is None:
         msg = (f"No trade — signal too weak ({conf:.0f}% confidence) "
-               f"in a {regime} market")
+               f"in {regime} conditions")
         log.info("%s: %s", tag, msg)
         _record(recent, symbol, "no_trade", msg, off)
         return
