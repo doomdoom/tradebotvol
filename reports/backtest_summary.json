@@ -1,0 +1,738 @@
+{
+  "generated_at": "2026-07-06",
+  "market_type": "futures",
+  "neutral_threshold_pct": 0.015,
+  "candles": 3000,
+  "folds": 5,
+  "pairs": [
+    "BTCUSDT 1m",
+    "BTCUSDT 3m",
+    "BTCUSDT 5m",
+    "BTCUSDT 15m",
+    "BTCUSDT 1h",
+    "ETHUSDT 1m",
+    "ETHUSDT 3m",
+    "ETHUSDT 5m",
+    "ETHUSDT 15m",
+    "ETHUSDT 1h",
+    "SOLUSDT 1m",
+    "SOLUSDT 3m",
+    "SOLUSDT 5m",
+    "SOLUSDT 15m",
+    "SOLUSDT 1h"
+  ],
+  "n_oos_rows": 21990,
+  "baseline": {
+    "metrics": {
+      "n": 21990,
+      "accuracy_pct": 39.23146884947704,
+      "precision": {
+        "bearish": 39.05053598774885,
+        "neutral": 18.901453957996768,
+        "bullish": 40.47166551485833
+      },
+      "recall": {
+        "bearish": 41.391624283086244,
+        "neutral": 3.5082458770614693,
+        "bullish": 49.76630550244317
+      },
+      "f1": {
+        "bearish": 40.187014078587936,
+        "neutral": 5.918057663125949,
+        "bullish": 44.64030490709862
+      },
+      "macro_f1_pct": 30.248458882937502,
+      "confusion": {
+        "bearish": {
+          "bearish": 3825,
+          "neutral": 254,
+          "bullish": 5162
+        },
+        "neutral": {
+          "bearish": 1489,
+          "neutral": 117,
+          "bullish": 1729
+        },
+        "bullish": {
+          "bearish": 4481,
+          "neutral": 248,
+          "bullish": 4685
+        }
+      },
+      "support": {
+        "bearish": 9241,
+        "neutral": 3335,
+        "bullish": 9414
+      }
+    },
+    "coverage": {
+      "total": 21990,
+      "signalled": 21990,
+      "coverage_pct": 100.0
+    },
+    "majority_baseline": {
+      "class": "bullish",
+      "accuracy_pct": 42.810368349249664,
+      "n": 21990
+    },
+    "predicted_distribution": {
+      "bearish": 9795,
+      "neutral": 619,
+      "bullish": 11576
+    },
+    "actual_distribution": {
+      "bearish": 9241,
+      "neutral": 3335,
+      "bullish": 9414
+    },
+    "accuracy_by_symbol": {
+      "BTCUSDT": {
+        "n": 7330,
+        "accuracy_pct": 37.62619372442019
+      },
+      "ETHUSDT": {
+        "n": 7330,
+        "accuracy_pct": 39.30422919508867
+      },
+      "SOLUSDT": {
+        "n": 7330,
+        "accuracy_pct": 40.76398362892224
+      }
+    },
+    "accuracy_by_timeframe": {
+      "15m": {
+        "n": 4410,
+        "accuracy_pct": 42.698412698412696
+      },
+      "1h": {
+        "n": 4410,
+        "accuracy_pct": 44.60317460317461
+      },
+      "1m": {
+        "n": 4380,
+        "accuracy_pct": 31.141552511415526
+      },
+      "3m": {
+        "n": 4410,
+        "accuracy_pct": 37.188208616780045
+      },
+      "5m": {
+        "n": 4380,
+        "accuracy_pct": 40.47945205479452
+      }
+    },
+    "accuracy_by_regime": {
+      "BREAKOUT": {
+        "n": 657,
+        "accuracy_pct": 33.789954337899545
+      },
+      "CHOPPY": {
+        "n": 4612,
+        "accuracy_pct": 37.90112749349523
+      },
+      "HIGH_VOLATILITY": {
+        "n": 1392,
+        "accuracy_pct": 42.74425287356322
+      },
+      "LOW_VOLATILITY": {
+        "n": 108,
+        "accuracy_pct": 33.33333333333333
+      },
+      "SIDEWAYS": {
+        "n": 21,
+        "accuracy_pct": 47.61904761904761
+      },
+      "TREND_DOWN": {
+        "n": 6963,
+        "accuracy_pct": 38.67585810713773
+      },
+      "TREND_UP": {
+        "n": 8150,
+        "accuracy_pct": 40.441717791411044
+      },
+      "UNCLEAR": {
+        "n": 87,
+        "accuracy_pct": 31.03448275862069
+      }
+    },
+    "accuracy_by_session": {
+      "Asia": {
+        "n": 7479,
+        "accuracy_pct": 39.45714667736328
+      },
+      "Europe": {
+        "n": 7224,
+        "accuracy_pct": 40.033222591362126
+      },
+      "US": {
+        "n": 7287,
+        "accuracy_pct": 38.20502264306299
+      }
+    },
+    "accuracy_by_confidence_label": {
+      "high": {
+        "n": 7085,
+        "accuracy_pct": 38.094565984474244
+      },
+      "low": {
+        "n": 6665,
+        "accuracy_pct": 38.34958739684921
+      },
+      "medium": {
+        "n": 8240,
+        "accuracy_pct": 40.922330097087375
+      }
+    },
+    "calibration": [
+      {
+        "bucket": "50-55%",
+        "n": 1889,
+        "mean_confidence_pct": 52.460549264737,
+        "accuracy_pct": 41.97988353626258,
+        "gap_pct": 10.48066572847442
+      },
+      {
+        "bucket": "55-60%",
+        "n": 2054,
+        "mean_confidence_pct": 57.429014693445794,
+        "accuracy_pct": 40.31158714703019,
+        "gap_pct": 17.117427546415605
+      },
+      {
+        "bucket": "60-65%",
+        "n": 2108,
+        "mean_confidence_pct": 62.42574961776296,
+        "accuracy_pct": 40.03795066413662,
+        "gap_pct": 22.387798953626337
+      },
+      {
+        "bucket": "65-70%",
+        "n": 2189,
+        "mean_confidence_pct": 67.49327188657807,
+        "accuracy_pct": 41.43444495203289,
+        "gap_pct": 26.05882693454518
+      },
+      {
+        "bucket": "70-100%",
+        "n": 7085,
+        "mean_confidence_pct": 80.71737596637821,
+        "accuracy_pct": 38.094565984474244,
+        "gap_pct": 42.62280998190397
+      }
+    ]
+  },
+  "enhanced": {
+    "metrics": {
+      "n": 21990,
+      "accuracy_pct": 43.615279672578446,
+      "precision": {
+        "bearish": 43.89773764837172,
+        "neutral": 37.34939759036144,
+        "bullish": 44.23348059028104
+      },
+      "recall": {
+        "bearish": 46.823936803376256,
+        "neutral": 16.731634182908543,
+        "bullish": 49.989377522838325
+      },
+      "f1": {
+        "bearish": 45.31364540789611,
+        "neutral": 23.110374818803063,
+        "bullish": 46.9356206053957
+      },
+      "macro_f1_pct": 38.45321361069829,
+      "confusion": {
+        "bearish": {
+          "bearish": 4327,
+          "neutral": 467,
+          "bullish": 4447
+        },
+        "neutral": {
+          "bearish": 1291,
+          "neutral": 558,
+          "bullish": 1486
+        },
+        "bullish": {
+          "bearish": 4239,
+          "neutral": 469,
+          "bullish": 4706
+        }
+      },
+      "support": {
+        "bearish": 9241,
+        "neutral": 3335,
+        "bullish": 9414
+      }
+    },
+    "coverage": {
+      "total": 21990,
+      "signalled": 21990,
+      "coverage_pct": 100.0
+    },
+    "majority_baseline": {
+      "class": "bullish",
+      "accuracy_pct": 42.810368349249664,
+      "n": 21990
+    },
+    "predicted_distribution": {
+      "bearish": 9857,
+      "neutral": 1494,
+      "bullish": 10639
+    },
+    "actual_distribution": {
+      "bearish": 9241,
+      "neutral": 3335,
+      "bullish": 9414
+    },
+    "accuracy_by_symbol": {
+      "BTCUSDT": {
+        "n": 7330,
+        "accuracy_pct": 42.12824010914052
+      },
+      "ETHUSDT": {
+        "n": 7330,
+        "accuracy_pct": 44.461118690313775
+      },
+      "SOLUSDT": {
+        "n": 7330,
+        "accuracy_pct": 44.256480218281034
+      }
+    },
+    "accuracy_by_timeframe": {
+      "15m": {
+        "n": 4410,
+        "accuracy_pct": 47.66439909297052
+      },
+      "1h": {
+        "n": 4410,
+        "accuracy_pct": 48.57142857142857
+      },
+      "1m": {
+        "n": 4380,
+        "accuracy_pct": 36.5296803652968
+      },
+      "3m": {
+        "n": 4410,
+        "accuracy_pct": 41.043083900226755
+      },
+      "5m": {
+        "n": 4380,
+        "accuracy_pct": 44.22374429223744
+      }
+    },
+    "accuracy_by_regime": {
+      "BREAKOUT": {
+        "n": 657,
+        "accuracy_pct": 52.207001522070016
+      },
+      "CHOPPY": {
+        "n": 4612,
+        "accuracy_pct": 42.10754553339115
+      },
+      "HIGH_VOLATILITY": {
+        "n": 1392,
+        "accuracy_pct": 45.474137931034484
+      },
+      "LOW_VOLATILITY": {
+        "n": 108,
+        "accuracy_pct": 46.2962962962963
+      },
+      "SIDEWAYS": {
+        "n": 21,
+        "accuracy_pct": 33.33333333333333
+      },
+      "TREND_DOWN": {
+        "n": 6963,
+        "accuracy_pct": 43.60189573459716
+      },
+      "TREND_UP": {
+        "n": 8150,
+        "accuracy_pct": 43.43558282208589
+      },
+      "UNCLEAR": {
+        "n": 87,
+        "accuracy_pct": 45.97701149425287
+      }
+    },
+    "accuracy_by_session": {
+      "Asia": {
+        "n": 7479,
+        "accuracy_pct": 43.21433346704105
+      },
+      "Europe": {
+        "n": 7224,
+        "accuracy_pct": 43.81229235880399
+      },
+      "US": {
+        "n": 7287,
+        "accuracy_pct": 43.83148071908879
+      }
+    },
+    "accuracy_by_confidence_label": {
+      "high": {
+        "n": 584,
+        "accuracy_pct": 42.465753424657535
+      },
+      "low": {
+        "n": 14866,
+        "accuracy_pct": 42.466029866810175
+      },
+      "medium": {
+        "n": 6540,
+        "accuracy_pct": 46.330275229357795
+      }
+    },
+    "calibration": [
+      {
+        "bucket": "50-55%",
+        "n": 4410,
+        "mean_confidence_pct": 51.87864708338481,
+        "accuracy_pct": 46.78004535147392,
+        "gap_pct": 5.09860173191089
+      },
+      {
+        "bucket": "55-60%",
+        "n": 1182,
+        "mean_confidence_pct": 57.01489609459729,
+        "accuracy_pct": 47.03891708967851,
+        "gap_pct": 9.975979004918777
+      },
+      {
+        "bucket": "60-65%",
+        "n": 499,
+        "mean_confidence_pct": 62.17677151455254,
+        "accuracy_pct": 44.28857715430862,
+        "gap_pct": 17.888194360243922
+      },
+      {
+        "bucket": "65-70%",
+        "n": 449,
+        "mean_confidence_pct": 67.36041085075945,
+        "accuracy_pct": 42.31625835189309,
+        "gap_pct": 25.04415249886636
+      },
+      {
+        "bucket": "70-100%",
+        "n": 584,
+        "mean_confidence_pct": 78.1559870674467,
+        "accuracy_pct": 42.465753424657535,
+        "gap_pct": 35.69023364278917
+      }
+    ]
+  },
+  "enhanced_pairs": {
+    "BTCUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 47.755102040816325,
+      "macro_f1_pct": 47.08389513108614,
+      "majority_pct": 47.006802721088434,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 48.02721088435374,
+      "macro_f1_pct": 49.348589122919165,
+      "majority_pct": 48.63945578231292,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 37.534246575342465,
+      "macro_f1_pct": 33.07339057854911,
+      "majority_pct": 40.75342465753425,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 38.29931972789116,
+      "macro_f1_pct": 42.040447491448965,
+      "majority_pct": 39.1156462585034,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 38.97260273972603,
+      "macro_f1_pct": 31.20655475517205,
+      "majority_pct": 40.273972602739725,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 48.435374149659864,
+      "macro_f1_pct": 49.79068857589984,
+      "majority_pct": 47.55102040816326,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 48.63945578231292,
+      "macro_f1_pct": 48.6640727854053,
+      "majority_pct": 49.1156462585034,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 37.054794520547944,
+      "macro_f1_pct": 36.56224386751514,
+      "majority_pct": 36.02739726027397,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 41.904761904761905,
+      "macro_f1_pct": 30.251392251769047,
+      "majority_pct": 42.7891156462585,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 46.23287671232877,
+      "macro_f1_pct": 48.402933154425035,
+      "majority_pct": 45.61643835616439,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 46.802721088435376,
+      "macro_f1_pct": 47.60140438986732,
+      "majority_pct": 47.82312925170068,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 49.047619047619044,
+      "macro_f1_pct": 49.553592053592055,
+      "majority_pct": 48.91156462585034,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 35.0,
+      "macro_f1_pct": 32.168439365717234,
+      "majority_pct": 36.23287671232877,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 42.925170068027214,
+      "macro_f1_pct": 43.41675169920963,
+      "majority_pct": 43.333333333333336,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 47.465753424657535,
+      "macro_f1_pct": 34.576750981958035,
+      "majority_pct": 47.054794520547944,
+      "coverage_pct": 100.0
+    }
+  },
+  "baseline_pairs": {
+    "BTCUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 42.44897959183673,
+      "macro_f1_pct": 32.868061330679446,
+      "majority_pct": 47.006802721088434,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 44.013605442176875,
+      "macro_f1_pct": 33.09903960822553,
+      "majority_pct": 48.63945578231292,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 28.698630136986303,
+      "macro_f1_pct": 26.10366286767999,
+      "majority_pct": 40.75342465753425,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 35.578231292517,
+      "macro_f1_pct": 28.277914398568857,
+      "majority_pct": 39.1156462585034,
+      "coverage_pct": 100.0
+    },
+    "BTCUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 37.32876712328767,
+      "macro_f1_pct": 29.186640619839,
+      "majority_pct": 40.273972602739725,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 42.10884353741496,
+      "macro_f1_pct": 30.21877523118526,
+      "majority_pct": 47.55102040816326,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 43.197278911564624,
+      "macro_f1_pct": 30.912232190565717,
+      "majority_pct": 49.1156462585034,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 32.12328767123287,
+      "macro_f1_pct": 26.349529105152044,
+      "majority_pct": 36.02739726027397,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 37.27891156462585,
+      "macro_f1_pct": 28.458344062697112,
+      "majority_pct": 42.7891156462585,
+      "coverage_pct": 100.0
+    },
+    "ETHUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 41.78082191780822,
+      "macro_f1_pct": 29.44551296511089,
+      "majority_pct": 45.61643835616439,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 15m": {
+      "n": 1470,
+      "accuracy_pct": 43.53741496598639,
+      "macro_f1_pct": 30.48966818097976,
+      "majority_pct": 47.82312925170068,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 1h": {
+      "n": 1470,
+      "accuracy_pct": 46.59863945578231,
+      "macro_f1_pct": 48.2004476160902,
+      "majority_pct": 48.91156462585034,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 1m": {
+      "n": 1460,
+      "accuracy_pct": 32.602739726027394,
+      "macro_f1_pct": 26.394026879420664,
+      "majority_pct": 36.23287671232877,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 3m": {
+      "n": 1470,
+      "accuracy_pct": 38.70748299319728,
+      "macro_f1_pct": 30.141353957244334,
+      "majority_pct": 43.333333333333336,
+      "coverage_pct": 100.0
+    },
+    "SOLUSDT 5m": {
+      "n": 1460,
+      "accuracy_pct": 42.32876712328767,
+      "macro_f1_pct": 29.900890824979797,
+      "majority_pct": 47.054794520547944,
+      "coverage_pct": 100.0
+    }
+  },
+  "enhanced_selectivity": [
+    {
+      "min_confidence": 0.5,
+      "coverage_pct": 32.39654388358345,
+      "n": 7124,
+      "accuracy_pct": 46.01347557551937,
+      "majority_pct": 44.27288040426727,
+      "beats_floor": true
+    },
+    {
+      "min_confidence": 0.55,
+      "coverage_pct": 12.341973624374717,
+      "n": 2714,
+      "accuracy_pct": 44.76787030213707,
+      "majority_pct": 43.441414885777455,
+      "beats_floor": true
+    },
+    {
+      "min_confidence": 0.6,
+      "coverage_pct": 6.966803092314688,
+      "n": 1532,
+      "accuracy_pct": 43.01566579634465,
+      "majority_pct": 42.10182767624021,
+      "beats_floor": true
+    },
+    {
+      "min_confidence": 0.65,
+      "coverage_pct": 4.697589813551614,
+      "n": 1033,
+      "accuracy_pct": 42.400774443368825,
+      "majority_pct": 42.20716360116166,
+      "beats_floor": false
+    },
+    {
+      "min_confidence": 0.7,
+      "coverage_pct": 2.6557526148249204,
+      "n": 584,
+      "accuracy_pct": 42.465753424657535,
+      "majority_pct": 41.0958904109589,
+      "beats_floor": true
+    }
+  ],
+  "enhanced_regime_edge": {
+    "UNCLEAR": {
+      "n": 87,
+      "accuracy_pct": 45.97701149425287,
+      "floor_pct": 37.93103448275862,
+      "edge_pct": 8.045977011494251,
+      "beats_floor": true
+    },
+    "BREAKOUT": {
+      "n": 657,
+      "accuracy_pct": 52.207001522070016,
+      "floor_pct": 46.727549467275495,
+      "edge_pct": 5.479452054794521,
+      "beats_floor": true
+    },
+    "LOW_VOLATILITY": {
+      "n": 108,
+      "accuracy_pct": 46.2962962962963,
+      "floor_pct": 45.370370370370374,
+      "edge_pct": 0.9259259259259238,
+      "beats_floor": true
+    },
+    "TREND_UP": {
+      "n": 8150,
+      "accuracy_pct": 43.43558282208589,
+      "floor_pct": 43.779141104294474,
+      "edge_pct": -0.3435582822085834,
+      "beats_floor": false
+    },
+    "HIGH_VOLATILITY": {
+      "n": 1392,
+      "accuracy_pct": 45.474137931034484,
+      "floor_pct": 45.9051724137931,
+      "edge_pct": -0.4310344827586192,
+      "beats_floor": false
+    },
+    "TREND_DOWN": {
+      "n": 6963,
+      "accuracy_pct": 43.60189573459716,
+      "floor_pct": 44.20508401551055,
+      "edge_pct": -0.6031882809133933,
+      "beats_floor": false
+    },
+    "CHOPPY": {
+      "n": 4612,
+      "accuracy_pct": 42.10754553339115,
+      "floor_pct": 42.8664353859497,
+      "edge_pct": -0.7588898525585464,
+      "beats_floor": false
+    },
+    "SIDEWAYS": {
+      "n": 21,
+      "accuracy_pct": 33.33333333333333,
+      "floor_pct": 42.857142857142854,
+      "edge_pct": -9.523809523809526,
+      "beats_floor": false
+    }
+  },
+  "verdict": "Enhanced 43.6% vs baseline 39.2% vs majority-floor 42.8%. Enhanced beats BOTH baseline and the majority floor out-of-sample -> candidate for enabling (per pair where it wins)."
+}

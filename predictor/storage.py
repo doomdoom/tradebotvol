@@ -38,11 +38,23 @@ CREATE TABLE IF NOT EXISTS predictions (
     actual_return_pct REAL,
     prediction_correct INTEGER,
     model_type TEXT NOT NULL,
-    explanation TEXT
+    explanation TEXT,
+    market_regime TEXT,
+    signal_strength TEXT,
+    model_version TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_predictions_pair
     ON predictions (symbol, timeframe);
 """
+
+#: Columns added after the original schema shipped. Added via ALTER TABLE on
+#: existing databases so old prediction logs keep working (values are NULL for
+#: rows written before the upgrade).
+_MIGRATION_COLUMNS = {
+    "market_regime": "TEXT",
+    "signal_strength": "TEXT",
+    "model_version": "TEXT",
+}
 
 
 class PredictionStorage:
@@ -67,7 +79,21 @@ class PredictionStorage:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add any newer columns missing from a pre-existing predictions table."""
+        existing = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(predictions)").fetchall()
+        }
+        for column, coltype in _MIGRATION_COLUMNS.items():
+            if column not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE predictions ADD COLUMN {column} {coltype}"
+                )
+                log.info("storage: migrated predictions table (+%s)", column)
 
     def close(self) -> None:
         with self._lock:
@@ -86,8 +112,9 @@ class PredictionStorage:
                     bullish_probability, bearish_probability, neutral_probability,
                     confidence, confidence_label,
                     expected_move_min_pct, expected_move_max_pct,
-                    reference_close, model_type, explanation
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    reference_close, model_type, explanation,
+                    market_regime, signal_strength, model_version
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     utc_now().isoformat(timespec="seconds"),
@@ -106,6 +133,9 @@ class PredictionStorage:
                     result.reference_close,
                     result.model_type,
                     result.explanation,
+                    getattr(result, "market_regime", "") or None,
+                    getattr(result, "signal_strength", "") or None,
+                    getattr(result, "model_version", "") or None,
                 ),
             )
             self._conn.commit()
@@ -163,6 +193,9 @@ class PredictionStorage:
                 int(r["prediction_correct"]),
                 r["model_type"],
                 r.get("explanation", ""),
+                r.get("market_regime") or r.get("regime"),
+                r.get("signal_strength"),
+                r.get("model_version"),
             )
             for r in records
         ]
@@ -176,8 +209,9 @@ class PredictionStorage:
                     confidence, confidence_label,
                     expected_move_min_pct, expected_move_max_pct,
                     reference_close, actual_direction, actual_return_pct,
-                    prediction_correct, model_type, explanation
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    prediction_correct, model_type, explanation,
+                    market_regime, signal_strength, model_version
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 rows,
             )

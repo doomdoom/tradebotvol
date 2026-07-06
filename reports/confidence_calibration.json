@@ -1,0 +1,76 @@
+{
+  "baseline": [
+    {
+      "bucket": "50-55%",
+      "n": 1889,
+      "mean_confidence_pct": 52.460549264737,
+      "accuracy_pct": 41.97988353626258,
+      "gap_pct": 10.48066572847442
+    },
+    {
+      "bucket": "55-60%",
+      "n": 2054,
+      "mean_confidence_pct": 57.429014693445794,
+      "accuracy_pct": 40.31158714703019,
+      "gap_pct": 17.117427546415605
+    },
+    {
+      "bucket": "60-65%",
+      "n": 2108,
+      "mean_confidence_pct": 62.42574961776296,
+      "accuracy_pct": 40.03795066413662,
+      "gap_pct": 22.387798953626337
+    },
+    {
+      "bucket": "65-70%",
+      "n": 2189,
+      "mean_confidence_pct": 67.49327188657807,
+      "accuracy_pct": 41.43444495203289,
+      "gap_pct": 26.05882693454518
+    },
+    {
+      "bucket": "70-100%",
+      "n": 7085,
+      "mean_confidence_pct": 80.71737596637821,
+      "accuracy_pct": 38.094565984474244,
+      "gap_pct": 42.62280998190397
+    }
+  ],
+  "enhanced": [
+    {
+      "bucket": "50-55%",
+      "n": 4410,
+      "mean_confidence_pct": 51.87864708338481,
+      "accuracy_pct": 46.78004535147392,
+      "gap_pct": 5.09860173191089
+    },
+    {
+      "bucket": "55-60%",
+      "n": 1182,
+      "mean_confidence_pct": 57.01489609459729,
+      "accuracy_pct": 47.03891708967851,
+      "gap_pct": 9.975979004918777
+    },
+    {
+      "bucket": "60-65%",
+      "n": 499,
+      "mean_confidence_pct": 62.17677151455254,
+      "accuracy_pct": 44.28857715430862,
+      "gap_pct": 17.888194360243922
+    },
+    {
+      "bucket": "65-70%",
+      "n": 449,
+      "mean_confidence_pct": 67.36041085075945,
+      "accuracy_pct": 42.31625835189309,
+      "gap_pct": 25.04415249886636
+    },
+    {
+      "bucket": "70-100%",
+      "n": 584,
+      "mean_confidence_pct": 78.1559870674467,
+      "accuracy_pct": 42.465753424657535,
+      "gap_pct": 35.69023364278917
+    }
+  ]
+}

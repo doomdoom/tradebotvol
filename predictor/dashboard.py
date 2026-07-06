@@ -875,6 +875,9 @@ def _dashboard_data(all_df: pd.DataFrame, offset_hours: float) -> dict:
                 "neu": round(float(last["neutral_probability"]), 4),
                 "conf": round(float(last["confidence"]) if pd.notna(last.get("confidence")) else 0.0, 4),
                 "conf_label": str(last.get("confidence_label") or ""),
+                "regime": str(last.get("market_regime") or ""),
+                "strength": str(last.get("signal_strength") or ""),
+                "mv": str(last.get("model_version") or ""),
                 "ref": ref,
                 "exp_low": (round(lo, 4) if lo is not None else None),
                 "exp_high": (round(hi, 4) if hi is not None else None),
@@ -909,6 +912,8 @@ def _hero() -> str:
       <div>
         <div class="hero-verdict" id="hero-verdict">Waiting for data…</div>
         <div class="hero-meta muted" id="hero-meta">—</div>
+        <div class="hero-tags" id="hero-tags"></div>
+        <div class="hero-warn" id="hero-warn" hidden></div>
         <div class="hero-status" id="hero-status"></div>
       </div>
     </div>
@@ -1378,6 +1383,29 @@ details[open]>.coin-body,details.disc[open]>*:not(summary){animation:reveal .22s
 .hero-call[data-dir=up] .hero-verdict{color:var(--good)}
 .hero-call[data-dir=down] .hero-verdict{color:var(--bad)}
 .hero-meta{font-size:12.5px;margin:3px 0 8px}
+.hero-tags{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px}
+.tag{font-size:11px;font-weight:650;padding:2px 8px;border-radius:999px;
+  background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
+.tag-reg{text-transform:capitalize}
+.tag-strong{background:#e7f6ec;color:#15803d;border-color:#bfe6cd}
+.tag-medium{background:#fff5e6;color:#b45309;border-color:#f6dcb0}
+.tag-weak{background:#f1f3f7;color:#64748b}
+.tag-model{background:#eef2ff;color:#4f46e5;border-color:#dfe4ff;text-transform:none}
+.hero-warn{font-size:12px;font-weight:600;color:#b45309;background:#fff7ed;
+  border:1px solid #f6dcb0;border-radius:8px;padding:5px 9px;margin:2px 0 8px}
+.lab-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.lab-stat{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.lab-stat span{font-size:11px;color:var(--text-2);font-weight:600}
+.lab-stat b{font-size:22px;font-weight:770;letter-spacing:-.02em}
+.lab-stat em{font-size:11px;color:var(--text-2);font-style:normal}
+.lab-hl{background:#eef2ff;border-color:#dfe4ff}
+.lab-verdict{font-size:12.5px;margin:2px 0 10px;color:var(--text-1)}
+.lab-tablewrap{overflow-x:auto}
+.lab-table{width:100%;border-collapse:collapse;font-size:12px}
+.lab-table th,.lab-table td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)}
+.lab-table th{color:var(--text-2);font-weight:650}
+@media(max-width:820px){.lab-cards{grid-template-columns:1fr}}
 .hero-facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:16px 20px;
   border-left:1px solid var(--border);border-right:1px solid var(--border);align-content:center}
 .fact-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2);margin-bottom:2px}
@@ -1527,6 +1555,11 @@ _JS = """
   function setTxt(id,t){var e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t;}
   function setW(id,w,bg){var e=document.getElementById(id);if(e){var s=w+'%';if(e.style.width!==s)e.style.width=s;if(bg&&e.style.background!==bg)e.style.background=bg;}}
   function setAttr(el,a,v){if(el&&el.getAttribute(a)!==v)el.setAttribute(a,v);}
+  function regimeLabel(r){
+    return ({TREND_UP:'up-trend',TREND_DOWN:'down-trend',SIDEWAYS:'sideways',CHOPPY:'choppy',
+      HIGH_VOLATILITY:'high volatility',LOW_VOLATILITY:'low volatility',BREAKOUT:'breakout',
+      UNCLEAR:'unclear'})[r]||String(r).toLowerCase();
+  }
   function updateHeroValues(){
     var sc=document.getElementById('sel-chip');
     if(sc){ if(selCoin){sc.hidden=false;setTxt('sel-chip',selCoin+' · '+selTf);} else sc.hidden=true; }
@@ -1536,14 +1569,29 @@ _JS = """
       setAttr(call,'data-dir','flat'); setTxt('hero-arrow','–'); setTxt('hero-verdict','No prediction yet');
       setTxt('hero-meta',selCoin?(selCoin+' · '+selTf):''); setTxt('hero-target','—');
       var s0=document.getElementById('hero-status'); if(s0&&s0.innerHTML!=='')s0.innerHTML='';
+      var t0=document.getElementById('hero-tags'); if(t0&&t0.innerHTML!=='')t0.innerHTML='';
+      var w0=document.getElementById('hero-warn'); if(w0)w0.hidden=true;
       setTxt('f-conf','—'); setTxt('f-exp','—'); setTxt('f-last','—'); setTxt('pb-key','—');
       setW('pb-up',0); setW('pb-neu',0); setW('pb-down',0); return;
     }
-    setAttr(call,'data-dir',p.up?'up':p.down?'down':'flat');
-    setTxt('hero-arrow',p.up?'▲':p.down?'▼':'■');
-    setTxt('hero-verdict',p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT');
+    var isWait=(p.dir==='wait');
+    setAttr(call,'data-dir',isWait?'flat':p.up?'up':p.down?'down':'flat');
+    setTxt('hero-arrow',isWait?'•':p.up?'▲':p.down?'▼':'■');
+    setTxt('hero-verdict',isWait?'No clear edge — waiting':p.up?'Next candle predicted UP':p.down?'Next candle predicted DOWN':'Next candle predicted FLAT');
     setTxt('hero-meta',selCoin+' · '+selTf+' · '+Math.round(p.conf*100)+'% '+(p.conf_label||''));
     setTxt('hero-target',p.target||'—');
+    // regime / signal-strength / model-version tags
+    var tags=document.getElementById('hero-tags');
+    if(tags){ var chips='';
+      if(p.regime) chips+='<span class="tag tag-reg">'+regimeLabel(p.regime)+'</span>';
+      if(p.strength) chips+='<span class="tag tag-'+p.strength+'">'+p.strength+' signal</span>';
+      if(p.mv) chips+='<span class="tag tag-model">'+p.mv+'</span>';
+      if(tags.innerHTML!==chips) tags.innerHTML=chips; }
+    var warn=document.getElementById('hero-warn'); var wmsg='';
+    if(p.regime==='CHOPPY') wmsg='⚠ Choppy market detected — signal is less reliable.';
+    else if(p.regime==='HIGH_VOLATILITY') wmsg='⚠ High volatility — expect wide swings.';
+    else if(isWait||p.strength==='weak'||p.conf<0.55) wmsg='⚠ Weak / low-confidence signal — no clear edge.';
+    if(warn){ if(wmsg){warn.hidden=false; if(warn.textContent!==wmsg)warn.textContent=wmsg;} else warn.hidden=true; }
     var st=document.getElementById('hero-status');
     var sh = p.status==='pending' ? '<span class="badge badge-warn">Pending · waiting for candle</span>'
       : (p.correct ? '<span class="badge badge-good">Resolved · correct</span>'
@@ -1743,6 +1791,69 @@ _JS = """
 """
 
 
+def _accuracy_lab(reports_dir: str = "reports") -> str:
+    """Static, read-only card summarising the latest out-of-sample backtest.
+
+    Reads reports/backtest_summary.json if present (written by
+    tools/backtest_accuracy.py). Shows nothing that affects live prediction —
+    it only displays already-computed research numbers."""
+    path = Path(reports_dir) / "backtest_summary.json"
+    if not path.exists():
+        return (
+            '<section class="card" id="sec-lab"><div class="hero-kicker">RESEARCH / ACCURACY LAB</div>'
+            '<p class="muted" style="margin:8px 0 0">No backtest yet. Run '
+            '<code>py tools/backtest_accuracy.py</code> to generate an out-of-sample '
+            'accuracy report (baseline vs enhanced vs majority floor).</p></section>'
+        )
+    try:
+        s = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # never break the page on a bad report file
+        return (f'<section class="card" id="sec-lab"><div class="hero-kicker">'
+                f'RESEARCH / ACCURACY LAB</div><p class="muted">Report unreadable: '
+                f'{_esc(str(exc))}</p></section>')
+
+    def acc(block):
+        return (s.get(block, {}).get("metrics", {}) or {}).get("accuracy_pct")
+
+    def f1(block):
+        return (s.get(block, {}).get("metrics", {}) or {}).get("macro_f1_pct")
+
+    def fmt(x):
+        return "n/a" if x is None else f"{float(x):.1f}%"
+
+    floor = (s.get("enhanced", {}).get("majority_baseline", {}) or {}).get("accuracy_pct")
+    rows = "".join(
+        f"<tr><td>{_esc(reg)}</td><td>{d.get('n',0)}</td>"
+        f"<td>{fmt(d.get('accuracy_pct'))}</td><td>{fmt(d.get('floor_pct'))}</td>"
+        f"<td>{'+' if (d.get('edge_pct') or 0)>=0 else ''}{float(d.get('edge_pct') or 0):.1f}pp</td>"
+        f"<td>{'✔' if d.get('beats_floor') else '·'}</td></tr>"
+        for reg, d in list((s.get("enhanced_regime_edge") or {}).items())[:6]
+    )
+    pairs = ", ".join(s.get("pairs", [])[:8])
+    return f"""
+<section class="card" id="sec-lab" aria-label="Research accuracy lab">
+  <div class="hero-kicker">RESEARCH / ACCURACY LAB</div>
+  <p class="muted" style="margin:6px 0 10px">Out-of-sample backtest ·
+    {int(s.get('n_oos_rows',0)):,} rows · {_esc(pairs)}</p>
+  <div class="lab-cards">
+    <div class="lab-stat"><span>Baseline (rule)</span><b>{fmt(acc('baseline'))}</b>
+      <em>F1 {fmt(f1('baseline'))}</em></div>
+    <div class="lab-stat lab-hl"><span>Enhanced (logreg)</span><b>{fmt(acc('enhanced'))}</b>
+      <em>F1 {fmt(f1('enhanced'))}</em></div>
+    <div class="lab-stat"><span>Majority floor</span><b>{fmt(floor)}</b>
+      <em>always-neutral</em></div>
+  </div>
+  <p class="lab-verdict">{_esc(s.get('verdict',''))}</p>
+  <div class="lab-tablewrap"><table class="lab-table">
+    <thead><tr><th>Regime</th><th>n</th><th>Acc</th><th>Local floor</th><th>Edge</th><th>Beats</th></tr></thead>
+    <tbody>{rows or '<tr><td colspan="6" class="muted">no regime breakdown</td></tr>'}</tbody>
+  </table></div>
+  <p class="muted" style="margin:8px 0 0;font-size:11.5px">Research only. Enhanced model is
+  enabled only where it beats the baseline out-of-sample; short timeframes are near a coin
+  flip. Regenerate with <code>py tools/backtest_accuracy.py</code>.</p>
+</section>"""
+
+
 def build_dashboard_html(
     storage: PredictionStorage,
     refresh_seconds: int | None = None,
@@ -1797,6 +1908,7 @@ def build_dashboard_html(
     {_kpis(all_df, resolved, report)}
     {_verdict(resolved, report)}
     {_validation_health(all_df, resolved, report)}
+    {_accuracy_lab()}
     {_rankings(report)}
     {_coin_accordion(coins, offset_hours)}
     {_recent_log(all_df, offset_hours)}

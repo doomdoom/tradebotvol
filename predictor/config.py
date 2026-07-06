@@ -14,7 +14,7 @@ try:  # optional dependency; .env support degrades gracefully
 except ImportError:  # pragma: no cover
     load_dotenv = None
 
-VALID_PREDICTION_MODES = ("rule_based", "ml")
+VALID_PREDICTION_MODES = ("rule_based", "ml", "enhanced")
 VALID_MARKET_TYPES = ("spot", "futures")
 VALID_MODEL_TYPES = (
     "logistic_regression",
@@ -55,6 +55,23 @@ class Config:
     models_dir: str = "models"
     db_path: str = "data/predictions.db"
     csv_path: str = "data/predictions.csv"
+    # --- Enhanced research model (Phase 6-9). Default OFF: live behaviour is
+    # unchanged unless prediction_mode="enhanced" or enable_enhanced_model=true. ---
+    enable_enhanced_model: bool = False
+    model_version: str = "baseline"          # "baseline" or "enhanced"
+    enhanced_model_type: str = "logistic_regression"
+    enhanced_train_candles: int = 3000
+    # Market-regime filter (Phase 5)
+    market_regime_filter_enabled: bool = True
+    choppy_market_confidence_penalty: float = 0.10
+    high_volatility_confidence_penalty: float = 0.08
+    min_trend_strength_for_strong_signal: float = 0.35
+    regime_high_vol_mult: float = 1.6
+    regime_low_vol_mult: float = 0.6
+    # NO-SIGNAL / WAIT mode (Phase 6)
+    enable_no_signal_mode: bool = False
+    min_confidence_for_signal: float = 0.55
+    min_signal_edge: float = 0.05
     # Optional API credentials (NOT required for public market data).
     api_key: str = ""
     api_secret: str = ""
@@ -73,12 +90,26 @@ class Config:
             raise ValueError(f"config: market_type must be one of {VALID_MARKET_TYPES}")
         if self.model_type not in VALID_MODEL_TYPES:
             raise ValueError(f"config: model_type must be one of {VALID_MODEL_TYPES}")
+        if self.enhanced_model_type not in VALID_MODEL_TYPES:
+            raise ValueError(
+                f"config: enhanced_model_type must be one of {VALID_MODEL_TYPES}"
+            )
+        # The enhanced model is active if explicitly selected either way.
+        if self.prediction_mode == "enhanced":
+            self.enable_enhanced_model = True
+        if self.enable_enhanced_model:
+            self.model_version = "enhanced"
         if not 0.5 <= self.train_test_split_pct < 1.0:
             raise ValueError("config: train_test_split_pct must be in [0.5, 1.0)")
         if self.neutral_threshold_pct < 0:
             raise ValueError("config: neutral_threshold_pct must be >= 0")
         if self.candle_limit < 200:
             raise ValueError("config: candle_limit must be >= 200 (indicator warmup)")
+
+    @property
+    def use_enhanced(self) -> bool:
+        """Whether the enhanced research model drives live predictions."""
+        return self.enable_enhanced_model or self.prediction_mode == "enhanced"
 
     @property
     def pairs(self) -> list[tuple[str, str]]:

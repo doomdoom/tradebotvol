@@ -12,6 +12,8 @@ from .config import Config
 from .feature_engineering import build_feature_frame
 from .logger import get_logger
 from .ml_predictor import MLPredictor
+from .regime import classify_row
+from .research_model import EnhancedModel, config_to_enhanced
 from .rule_based_predictor import RuleBasedPredictor
 from .utils import (
     BEARISH,
@@ -21,6 +23,14 @@ from .utils import (
     ms_to_datetime,
     timeframe_ms,
 )
+
+
+def _strength_from_confidence(conf: float) -> str:
+    if conf >= 0.65:
+        return "strong"
+    if conf >= 0.55:
+        return "medium"
+    return "weak"
 
 log = get_logger("prediction_engine")
 
@@ -49,6 +59,12 @@ class PredictionResult:
     model_type: str
     explanation: str
     meets_min_confidence: bool = True
+    # Research annotations (Phase 5/10) — present for every mode; the enhanced
+    # model sets them directly, other modes derive regime from the feature row.
+    market_regime: str = ""
+    signal_strength: str = ""
+    model_version: str = "baseline"
+    trend_strength: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -62,6 +78,7 @@ class PredictionEngine:
         self.client = client
         self.rule_predictor = RuleBasedPredictor(config.neutral_threshold_pct)
         self._ml_predictors: dict[tuple[str, str], MLPredictor] = {}
+        self._enhanced: dict[tuple[str, str], EnhancedModel] = {}
 
     # ------------------------------------------------------------------ #
 
@@ -74,6 +91,35 @@ class PredictionEngine:
 
     def set_ml_predictor(self, symbol: str, timeframe: str, predictor: MLPredictor) -> None:
         self._ml_predictors[(symbol, timeframe)] = predictor
+
+    def ensure_enhanced_models(self, pairs: list[tuple[str, str]] | None = None) -> None:
+        """Train the enhanced (fitted, calibrated) model for each pair in memory.
+
+        Downloads historical candles once at startup and fits a per-pair model.
+        Only called when the enhanced model is selected; other modes are
+        untouched. Trains on closed candles only (no leakage).
+        """
+        from .model_training import prepare_training_frame
+
+        ecfg = config_to_enhanced(self.config)
+        for symbol, timeframe in pairs or self.config.pairs:
+            try:
+                frame, feature_cols = prepare_training_frame(
+                    self.config, self.client, symbol, timeframe,
+                    self.config.enhanced_train_candles,
+                )
+                usable = frame.dropna(subset=[*feature_cols, "label"])
+                if len(usable) < 300:
+                    log.warning("%s %s: too few rows (%d) to fit enhanced model",
+                                symbol, timeframe, len(usable))
+                    continue
+                model = EnhancedModel(feature_cols, ecfg).fit(usable, usable["label"])
+                self._enhanced[(symbol, timeframe)] = model
+                log.info("%s %s: enhanced model fitted on %d rows",
+                         symbol, timeframe, len(usable))
+            except Exception as exc:
+                log.error("%s %s: enhanced model training failed: %s",
+                          symbol, timeframe, exc)
 
     # ------------------------------------------------------------------ #
 
@@ -111,7 +157,19 @@ class PredictionEngine:
         frame, _ = self.build_features(symbol, timeframe, candles)
         row = frame.iloc[-1]
 
-        if self.config.prediction_mode == "ml":
+        if self.config.use_enhanced:
+            model = self._enhanced.get((symbol, timeframe))
+            if model is None:
+                self.ensure_enhanced_models([(symbol, timeframe)])
+                model = self._enhanced.get((symbol, timeframe))
+            if model is None:
+                raise RuntimeError(
+                    f"{symbol} {timeframe}: enhanced model unavailable "
+                    "(training failed - check logs)."
+                )
+            raw = model.predict_row(row)
+            model_type = "enhanced"
+        elif self.config.prediction_mode == "ml":
             predictor = self._ml_predictors.get((symbol, timeframe))
             if predictor is None:
                 self.load_ml_models([(symbol, timeframe)])
@@ -155,6 +213,18 @@ class PredictionEngine:
                 f"minimum of {self.config.min_confidence * 100:.0f}% - treat as low conviction.)"
             )
 
+        # Regime annotation for every mode; enhanced supplies its own, others
+        # derive it from the same feature row (display-only, no effect on the
+        # predicted direction or confidence).
+        regime = str(raw.get("market_regime") or "")
+        trend_strength = raw.get("trend_strength")
+        if not regime or trend_strength is None:
+            info = classify_row(row)
+            regime = regime or info["regime"]
+            trend_strength = info["trend_strength"] if trend_strength is None else trend_strength
+        signal_strength = str(raw.get("signal_strength") or _strength_from_confidence(confidence))
+        model_version = str(raw.get("model_version") or model_type)
+
         move_min, move_max = self._expected_range(direction, row)
         return PredictionResult(
             symbol=symbol,
@@ -174,6 +244,10 @@ class PredictionEngine:
             model_type=model_type,
             explanation=explanation,
             meets_min_confidence=meets,
+            market_regime=regime,
+            signal_strength=signal_strength,
+            model_version=model_version,
+            trend_strength=float(trend_strength or 0.0),
         )
 
     @staticmethod

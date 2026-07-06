@@ -278,7 +278,10 @@ def main() -> int:
         else None
     )
     engine = PredictionEngine(config, client)
-    if config.prediction_mode == "ml":
+    if config.use_enhanced:
+        log.info("Enhanced model selected - training per-pair models on startup...")
+        engine.ensure_enhanced_models()
+    elif config.prediction_mode == "ml":
         _ensure_ml_models(config, client, engine)
 
     runner = LiveRunner(config, engine, storage)

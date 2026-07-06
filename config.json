@@ -24,5 +24,21 @@
   "data_dir": "data",
   "models_dir": "models",
   "db_path": "data/predictions.db",
-  "csv_path": "data/predictions.csv"
+  "csv_path": "data/predictions.csv",
+
+  "enable_enhanced_model": false,
+  "model_version": "baseline",
+  "enhanced_model_type": "logistic_regression",
+  "enhanced_train_candles": 3000,
+
+  "market_regime_filter_enabled": true,
+  "choppy_market_confidence_penalty": 0.10,
+  "high_volatility_confidence_penalty": 0.08,
+  "min_trend_strength_for_strong_signal": 0.35,
+  "regime_high_vol_mult": 1.6,
+  "regime_low_vol_mult": 0.6,
+
+  "enable_no_signal_mode": false,
+  "min_confidence_for_signal": 0.55,
+  "min_signal_edge": 0.05
 }
