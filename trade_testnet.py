@@ -289,17 +289,20 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
             for s in config.symbols:
                 p = client.position(s)
                 if not p["flat"]:
+                    value = round(abs(p["amount"]) * p["entry"], 2)
+                    lev = max(p.get("leverage") or args.leverage, 1)
+                    margin = round(value / lev, 2)
+                    # Live ROI on margin (leveraged) — what tracks the +12% trigger.
+                    roi = round(p["unrealized"] / margin * 100, 1) if margin else 0.0
                     positions.append({
                         "symbol": s,
                         "side": "LONG" if p["amount"] > 0 else "SHORT",
                         "amount": round(p["amount"], 6),
-                        # Position value in USDT (the leveraged notional) and the
-                        # margin actually put up (notional / leverage).
-                        "value_usdt": round(abs(p["amount"]) * p["entry"], 2),
-                        "margin_usdt": round(abs(p["amount"]) * p["entry"]
-                                             / max(p.get("leverage") or args.leverage, 1), 2),
+                        "value_usdt": value,      # leveraged notional (USDT)
+                        "margin_usdt": margin,    # capital actually put up
                         "entry": round(p["entry"], 2),
                         "unrealized": round(p["unrealized"], 2),
+                        "roi_pct": roi,
                     })
         except Exception as exc:
             log.warning("state: could not read testnet account: %s", exc)
