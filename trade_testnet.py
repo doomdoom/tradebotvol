@@ -323,22 +323,34 @@ def _write_state(path: Path, args, client, config, recent: list, off: float) -> 
         except Exception as exc:
             log.warning("state: could not read fees: %s", exc)
         try:
-            rows = client.income(income_type="REALIZED_PNL", limit=100)
-            rows.sort(key=lambda r: int(r.get("time", 0)), reverse=True)
-            realized_total = round(sum(float(r.get("income", 0)) for r in rows), 2)
+            rows = client.income(income_type="REALIZED_PNL", limit=200)
+            # One position-close can fill in several pieces, each a separate
+            # income row at the same second. Merge fills of the same close
+            # (symbol + second) into one trade so the count / win-loss are right.
+            grouped: dict = {}
             for r in rows:
-                ts = to_display_time(int(r.get("time", 0)), off)
-                pnl = round(float(r.get("income", 0)), 2)
+                key = (str(r.get("symbol", "")), int(r.get("time", 0)) // 1000)
+                g = grouped.setdefault(key, {"time_ms": int(r.get("time", 0)),
+                                             "symbol": str(r.get("symbol", "")),
+                                             "pnl": 0.0, "fee": 0.0})
+                g["pnl"] += float(r.get("income", 0))
+                tid = r.get("tradeId")
+                if tid is not None:
+                    g["fee"] += comm_by_trade.get(tid, 0.0)
+            trades = sorted(grouped.values(), key=lambda t: t["time_ms"], reverse=True)
+            realized_total = round(sum(t["pnl"] for t in trades), 2)
+            for t in trades:
+                ts = to_display_time(t["time_ms"], off)
+                pnl = round(t["pnl"], 2)
                 if ts.startswith(today):
                     if pnl >= 0:
                         today_profit += pnl
                     else:
                         today_loss += pnl
                 if len(history) < 15:
-                    fee = comm_by_trade.get(r.get("tradeId"))
-                    history.append({"time": ts, "symbol": str(r.get("symbol", "")),
+                    history.append({"time": ts, "symbol": t["symbol"],
                                     "pnl": pnl, "win": pnl >= 0,
-                                    "fee": round(fee, 4) if fee else None,
+                                    "fee": round(t["fee"], 4) if t["fee"] else None,
                                     "fee_type": "taker"})
             today_profit = round(today_profit, 2)
             today_loss = round(today_loss, 2)
